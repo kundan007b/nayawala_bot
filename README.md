@@ -42,7 +42,7 @@ d:\n8nbot\
 - **n8n instance** (self-hosted or cloud)
 - **API Keys** for:
   - Google Gemini (free tier available)
-  - Perplexity AI or SerpAPI
+  - Gemini with Google Search grounding
   - ElevenLabs ($22/mo for 100 mins)
   - Creatomate ($12/mo for 100 videos)
 - **Google Sheets** for story pool management

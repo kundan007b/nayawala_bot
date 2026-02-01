@@ -90,14 +90,19 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "https://api.perplexity.ai/chat/completions",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_GEMINI_API_KEY }}"
+                        }
+                    ]
+                },
                 "sendHeaders": true,
                 "headerParameters": {
                     "parameters": [
-                        {
-                            "name": "Authorization",
-                            "value": "=Bearer {{ $env.PERPLEXITY_API_KEY }}"
-                        },
                         {
                             "name": "Content-Type",
                             "value": "application/json"
@@ -106,11 +111,11 @@
                 },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={\n  \"model\": \"llama-3.1-sonar-small-128k-online\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a children's story researcher for kids aged 3-8. Return a JSON array with fields: title, summary (2-3 engaging sentences), characters (array), moral, origin_country, difficulty (easy/medium).\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Find {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}. Return ONLY a valid JSON array.\"\n    }\n  ],\n  \"temperature\": 0.2\n}",
+                "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a children's story researcher for kids aged 3-8. Search and find {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}.\\n\\nFor each story, provide:\\n- title: The story name\\n- summary: 2-3 engaging sentences about the story\\n- characters: Array of main character names\\n- moral: The lesson or moral of the story\\n- origin_country: Country of origin\\n- difficulty: easy or medium\\n\\nReturn ONLY a valid JSON array with these fields. No additional text.\"\n    }]\n  }],\n  \"tools\": [{\n    \"googleSearch\": {}\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 4096\n  }\n}",
                 "options": {}
             },
             "id": "e5f6a7b8-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
-            "name": "Search Stories (Perplexity)",
+            "name": "Search Stories (Gemini)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
@@ -120,7 +125,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const response = $input.first().json;\nlet content = response.choices[0].message.content;\nlet stories = [];\n\ntry {\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', raw: content.substring(0, 500) } }];\n}\n\nconst timestamp = new Date().toISOString();\nreturn stories.map((story, index) => ({\n  json: {\n    id: `story_${Date.now()}_${index}`,\n    title: story.title || 'Untitled',\n    summary: story.summary || '',\n    characters: Array.isArray(story.characters) ? story.characters.join(', ') : (story.characters || ''),\n    moral: story.moral || '',\n    origin: story.origin_country || story.origin || '',\n    difficulty: story.difficulty || 'easy',\n    status: 'pending',\n    created_at: timestamp\n  }\n}));"
+                "jsCode": "const response = $input.first().json;\nlet content = '';\n\ntry {\n  content = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response from Gemini', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet stories = [];\n\ntry {\n  // Try to extract JSON array from the response\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    // Try parsing entire content\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', raw: content.substring(0, 500) } }];\n}\n\nconst timestamp = new Date().toISOString();\nreturn stories.map((story, index) => ({\n  json: {\n    id: `story_${Date.now()}_${index}`,\n    title: story.title || 'Untitled',\n    summary: story.summary || '',\n    characters: Array.isArray(story.characters) ? story.characters.join(', ') : (story.characters || ''),\n    moral: story.moral || '',\n    origin: story.origin_country || story.origin || '',\n    difficulty: story.difficulty || 'easy',\n    status: 'pending',\n    created_at: timestamp\n  }\n}));"
             },
             "id": "f6a7b8c9-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
             "name": "Parse Stories",
@@ -388,7 +393,7 @@
         },
         {
             "parameters": {
-                "content": "## 🔑 Environment Variables\n\nSet these in n8n Settings:\n\n- `GOOGLE_SHEET_ID`\n- `PERPLEXITY_API_KEY`\n- `GOOGLE_GEMINI_API_KEY`\n- `ELEVENLABS_API_KEY`\n- `CREATOMATE_API_KEY`\n\n### Google Sheet Columns:\nID | Title | Summary | Characters | Moral | Origin | Difficulty | Status | Created_At",
+                "content": "## 🔑 Environment Variables\n\nSet these in n8n Settings:\n\n- `GOOGLE_SHEET_ID`\n- `GOOGLE_GEMINI_API_KEY`\n- `ELEVENLABS_API_KEY`\n- `CREATOMATE_API_KEY`\n\n### Google Sheet Columns:\nID | Title | Summary | Characters | Moral | Origin | Difficulty | Status | Created_At",
                 "height": 320,
                 "width": 300,
                 "color": 5
@@ -440,7 +445,7 @@
             "main": [
                 [
                     {
-                        "node": "Search Stories (Perplexity)",
+                        "node": "Search Stories (Gemini)",
                         "type": "main",
                         "index": 0
                     }
@@ -469,7 +474,7 @@
                 ]
             ]
         },
-        "Search Stories (Perplexity)": {
+        "Search Stories (Gemini)": {
             "main": [
                 [
                     {

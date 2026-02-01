@@ -44,9 +44,16 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "https://api.perplexity.ai/chat/completions",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_GEMINI_API_KEY }}"
+                        }
+                    ]
+                },
                 "sendHeaders": true,
                 "headerParameters": {
                     "parameters": [
@@ -58,21 +65,21 @@
                 },
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={\n  \"model\": \"llama-3.1-sonar-small-128k-online\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a children's story researcher. Search and find popular stories based on the user's request. Return a JSON array of stories with title, brief summary (2-3 sentences), main characters, and moral lesson.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Find {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}. Return as JSON array with fields: title, summary, characters (array), moral, origin_country, difficulty (easy/medium). Make summaries engaging for children aged 3-8.\"\n    }\n  ],\n  \"temperature\": 0.2\n}"
+                "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a children's story researcher. Search and find popular stories based on the user's request.\\n\\nFind {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}.\\n\\nReturn a JSON array with fields: title, summary (2-3 engaging sentences for children aged 3-8), characters (array), moral, origin_country, difficulty (easy/medium).\\n\\nReturn ONLY a valid JSON array. No additional text.\"\n    }]\n  }],\n  \"tools\": [{\n    \"googleSearch\": {}\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 4096\n  }\n}"
             },
-            "id": "perplexity-search",
-            "name": "Search Stories (Perplexity)",
+            "id": "gemini-search",
+            "name": "Search Stories (Gemini)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4,
             "position": [
                 680,
                 300
             ],
-            "notes": "Uses Perplexity API to search web for story information. Replace with SerpAPI if preferred."
+            "notes": "Uses Gemini API with Google Search grounding for story research."
         },
         {
             "parameters": {
-                "jsCode": "// Parse the Perplexity response and extract stories\nconst response = $input.first().json;\nlet content = response.choices[0].message.content;\n\n// Try to extract JSON from the response\nlet stories = [];\n\ntry {\n  // Look for JSON array in the content\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    // Try parsing the whole content as JSON\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  // If parsing fails, create a structured error response\n  return [{\n    json: {\n      error: 'Failed to parse stories',\n      raw_content: content\n    }\n  }];\n}\n\n// Add metadata to each story\nconst timestamp = new Date().toISOString();\nconst enrichedStories = stories.map((story, index) => ({\n  id: `story_${Date.now()}_${index}`,\n  ...story,\n  status: 'pending',\n  created_at: timestamp,\n  topic_request: $('Set Topic Request').first().json.topic_request,\n  origin: $('Set Topic Request').first().json.story_origin\n}));\n\nreturn enrichedStories.map(story => ({ json: story }));"
+                "jsCode": "// Parse the Gemini response and extract stories\nconst response = $input.first().json;\nlet content = '';\n\ntry {\n  content = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response from Gemini', raw_content: JSON.stringify(response).substring(0, 300) } }];\n}\n\n// Try to extract JSON from the response\nlet stories = [];\n\ntry {\n  // Look for JSON array in the content\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    // Try parsing the whole content as JSON\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  // If parsing fails, create a structured error response\n  return [{\n    json: {\n      error: 'Failed to parse stories',\n      raw_content: content\n    }\n  }];\n}\n\n// Add metadata to each story\nconst timestamp = new Date().toISOString();\nconst enrichedStories = stories.map((story, index) => ({\n  id: `story_${Date.now()}_${index}`,\n  ...story,\n  status: 'pending',\n  created_at: timestamp,\n  topic_request: $('Set Topic Request').first().json.topic_request,\n  origin: $('Set Topic Request').first().json.story_origin\n}));\n\nreturn enrichedStories.map(story => ({ json: story }));"
             },
             "id": "parse-stories",
             "name": "Parse Stories",
@@ -204,14 +211,14 @@
             "main": [
                 [
                     {
-                        "node": "Search Stories (Perplexity)",
+                        "node": "Search Stories (Gemini)",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Search Stories (Perplexity)": {
+        "Search Stories (Gemini)": {
             "main": [
                 [
                     {
