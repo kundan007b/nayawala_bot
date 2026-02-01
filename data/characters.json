@@ -1,0 +1,60 @@
+{
+  "characters": [
+    {
+      "id": "mira",
+      "name": "Mira the Storyteller",
+      "role": "main_narrator",
+      "voice_id": "EXAVITQu4vr4xnSDxMaL",
+      "voice_name": "Bella (ElevenLabs)",
+      "visual_style": "Young Indian girl, 10 years old, long flowing black hair with colorful ribbons, traditional colorful dress with patterns, warm friendly smile, big expressive brown eyes, cartoon illustration style, soft pastel colors",
+      "personality": "Cheerful, wise beyond her years, loves nature and animals, always curious",
+      "catchphrase": "And that's how we learn to be kind!",
+      "intro_line": "Hello little friends! Mira here with another wonderful story!"
+    },
+    {
+      "id": "bolo",
+      "name": "Bolo the Parrot",
+      "role": "comic_relief",
+      "voice_id": "TxGEqnHWrfWFTfGW9XjX",
+      "voice_name": "Josh (ElevenLabs)",
+      "visual_style": "Bright green parrot with vibrant red beak, expressive cartoon eyes, fluffy feathers, perched on a branch or Mira's shoulder, friendly and playful look",
+      "personality": "Funny, curious, sometimes mischievous, loves to make jokes, easily excited",
+      "catchphrase": "Squawk! That's amazing!",
+      "intro_line": "Bolo is here! Ready for adventure!"
+    },
+    {
+      "id": "dadu",
+      "name": "Dadu the Wise Owl",
+      "role": "wisdom_narrator",
+      "voice_id": "VR6AewLTigWG4xSOukaG",
+      "voice_name": "Arnold (ElevenLabs)",
+      "visual_style": "Old wise owl with round spectacles, fluffy brown and white feathers, kind grandfatherly expression, sitting on an ancient tree branch, soft moonlight glow",
+      "personality": "Gentle, patient, full of ancient wisdom, speaks slowly and thoughtfully",
+      "catchphrase": "Remember, little ones, wisdom is the greatest treasure.",
+      "intro_line": "Gather around, dear children. Dadu has a story to share."
+    },
+    {
+      "id": "sunny",
+      "name": "Sunny the Elephant",
+      "role": "adventure_narrator",
+      "voice_id": "pNInz6obpgDQGcFmaJgB",
+      "voice_name": "Adam (ElevenLabs)",
+      "visual_style": "Baby elephant with big floppy ears, gray body with pink cheeks, always wearing a small colorful hat, trunk often raised in excitement, cartoon style",
+      "personality": "Brave, loyal, sometimes clumsy but always helpful, loves his friends",
+      "catchphrase": "Together we can do anything!",
+      "intro_line": "Sunny here! Let's go on an adventure!"
+    }
+  ],
+  "visual_style_guide": {
+    "art_style": "Modern 2D cartoon illustration, soft edges, child-friendly, vibrant but not overwhelming colors",
+    "color_palette": ["#FFB6C1", "#87CEEB", "#98FB98", "#DDA0DD", "#F0E68C", "#FFA07A"],
+    "background_style": "Soft gradients, magical forests, cozy villages, friendly environments",
+    "character_consistency": "Always use the same visual descriptions for characters to maintain consistency across all videos"
+  },
+  "voice_settings": {
+    "narrator_stability": 0.5,
+    "narrator_similarity_boost": 0.75,
+    "narrator_style": 0.4,
+    "speaking_rate": 0.9
+  }
+}

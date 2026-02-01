@@ -1,0 +1,389 @@
+{
+    "name": "Script Generator",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "story_id",
+                            "value": "={{ $json.story_id }}"
+                        },
+                        {
+                            "name": "narrator_character",
+                            "value": "={{ $json.narrator || 'mira' }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-story-id",
+            "name": "Set Story Selection",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "ID",
+                            "lookupValue": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "fetch-story",
+            "name": "Fetch Story from Sheets",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                680,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "filePath": "={{ $env.CHARACTERS_FILE_PATH || 'd:/n8nbot/data/characters.json' }}"
+            },
+            "id": "load-characters",
+            "name": "Load Characters",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                680,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Merge story data with character data\nconst story = $('Fetch Story from Sheets').first().json;\nconst charactersData = JSON.parse($('Load Characters').first().json.data);\n\n// Find the selected narrator character\nconst narratorId = $('Set Story Selection').first().json.narrator_character;\nconst narrator = charactersData.characters.find(c => c.id === narratorId) || charactersData.characters[0];\n\nreturn [{\n  json: {\n    story: story,\n    narrator: narrator,\n    all_characters: charactersData.characters,\n    visual_style_guide: charactersData.visual_style_guide,\n    voice_settings: charactersData.voice_settings\n  }\n}];"
+            },
+            "id": "merge-data",
+            "name": "Merge Story & Characters",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gemini-2.0-flash",
+                "options": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 4096
+                }
+            },
+            "id": "gemini-llm",
+            "name": "Google Gemini LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+            "typeVersion": 1,
+            "position": [
+                1120,
+                500
+            ],
+            "credentials": {
+                "googleGeminiApi": {
+                    "id": "GOOGLE_GEMINI_CREDENTIAL_ID",
+                    "name": "Google Gemini API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "prompt": "=You are a children's video script writer. Create a detailed video script for a 60-second YouTube Shorts video.\n\n## Story Information:\n- Title: {{ $json.story.Title }}\n- Summary: {{ $json.story.Summary }}\n- Characters: {{ $json.story.Characters }}\n- Moral: {{ $json.story.Moral }}\n- Origin: {{ $json.story.Origin }}\n\n## Narrator Character:\n- Name: {{ $json.narrator.name }}\n- Personality: {{ $json.narrator.personality }}\n- Intro Line: {{ $json.narrator.intro_line }}\n- Catchphrase: {{ $json.narrator.catchphrase }}\n\n## Visual Style Guide:\n- Art Style: {{ $json.visual_style_guide.art_style }}\n- Color Palette: {{ $json.visual_style_guide.color_palette.join(', ') }}\n- Background Style: {{ $json.visual_style_guide.background_style }}\n\n## Requirements:\n1. Create exactly 6-8 scenes that fit within 60 seconds total\n2. Each scene should be 7-10 seconds\n3. Use simple language suitable for ages 3-8\n4. Start with narrator's intro and end with the moral lesson\n5. Include the narrator's catchphrase naturally\n6. Make visuals colorful, friendly, and engaging for children\n\n## Output Format (JSON):\n```json\n{\n  \"title\": \"Video title for YouTube\",\n  \"hook\": \"Attention-grabbing first 3 seconds text\",\n  \"scenes\": [\n    {\n      \"scene_number\": 1,\n      \"duration_seconds\": 8,\n      \"narration\": \"What the narrator says\",\n      \"visual_prompt\": \"Detailed image generation prompt\",\n      \"emotion\": \"cheerful/excited/curious/warm/dramatic\",\n      \"text_overlay\": \"Optional text to show on screen\",\n      \"transition\": \"fade/zoom/slide\"\n    }\n  ],\n  \"total_duration\": 58,\n  \"moral_text\": \"The moral lesson in simple words\",\n  \"call_to_action\": \"Follow for more stories!\"\n}\n```\n\nGenerate the complete video script now:",
+                "options": {}
+            },
+            "id": "generate-script",
+            "name": "Generate Video Script",
+            "type": "@n8n/n8n-nodes-langchain.chainLlm",
+            "typeVersion": 1.4,
+            "position": [
+                1120,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Parse the generated script\nconst response = $input.first().json.text || $input.first().json.response;\nlet script;\n\ntry {\n  // Extract JSON from markdown code blocks if present\n  const jsonMatch = response.match(/```json\\s*([\\s\\S]*?)```/) || response.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    script = JSON.parse(jsonMatch[1]);\n  } else {\n    // Try to find JSON object in the response\n    const objectMatch = response.match(/\\{[\\s\\S]*\\}/);\n    if (objectMatch) {\n      script = JSON.parse(objectMatch[0]);\n    } else {\n      throw new Error('No JSON found in response');\n    }\n  }\n} catch (e) {\n  return [{\n    json: {\n      error: 'Failed to parse script',\n      raw_response: response,\n      error_message: e.message\n    }\n  }];\n}\n\n// Get the story data from earlier\nconst mergedData = $('Merge Story & Characters').first().json;\n\n// Enrich the script with metadata\nconst enrichedScript = {\n  ...script,\n  story_id: mergedData.story.ID,\n  story_title: mergedData.story.Title,\n  narrator: mergedData.narrator,\n  voice_settings: mergedData.voice_settings,\n  generated_at: new Date().toISOString(),\n  status: 'pending_approval'\n};\n\nreturn [{ json: enrichedScript }];"
+            },
+            "id": "parse-script",
+            "name": "Parse Generated Script",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1340,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Create a human-readable preview\nconst script = $input.first().json;\n\nlet preview = `📺 **VIDEO SCRIPT PREVIEW**\\n\\n`;\npreview += `🎬 **Title:** ${script.title}\\n`;\npreview += `🎯 **Hook:** ${script.hook}\\n`;\npreview += `⏱️ **Total Duration:** ${script.total_duration} seconds\\n`;\npreview += `🎭 **Narrator:** ${script.narrator.name}\\n\\n`;\npreview += `---\\n\\n`;\npreview += `📜 **SCENES:**\\n\\n`;\n\nscript.scenes.forEach((scene, i) => {\n  preview += `**Scene ${scene.scene_number}** (${scene.duration_seconds}s) [${scene.emotion}]\\n`;\n  preview += `🗣️ \"${scene.narration}\"\\n`;\n  preview += `🖼️ Visual: ${scene.visual_prompt.substring(0, 100)}...\\n`;\n  if (scene.text_overlay) {\n    preview += `📝 Text: \"${scene.text_overlay}\"\\n`;\n  }\n  preview += `\\n`;\n});\n\npreview += `---\\n\\n`;\npreview += `💡 **Moral:** ${script.moral_text}\\n`;\npreview += `📢 **CTA:** ${script.call_to_action}\\n\\n`;\npreview += `---\\n`;\npreview += `Reply with ✅ to approve or provide feedback to revise.`;\n\nreturn [{\n  json: {\n    ...script,\n    preview_text: preview\n  }\n}];"
+            },
+            "id": "create-preview",
+            "name": "Create Preview",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1560,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.SLACK_CHANNEL || '#video-pipeline' }}",
+                "text": "={{ $json.preview_text }}",
+                "otherOptions": {
+                    "includeLinkToWorkflow": true
+                }
+            },
+            "id": "send-for-approval",
+            "name": "Send for Approval (Slack)",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2,
+            "position": [
+                1780,
+                300
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "SLACK_CREDENTIAL_ID",
+                    "name": "Slack API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "content": "=## Script Ready for Approval\\n\\nThe script for **{{ $json.title }}** has been sent to Slack for review.\\n\\nTo continue:\\n1. Review the script in Slack\\n2. Approve or request changes\\n3. Once approved, trigger the Asset Generator workflow with this story_id: `{{ $json.story_id }}`",
+                "height": 200,
+                "width": 300
+            },
+            "id": "note",
+            "name": "Sticky Note",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                2000,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "Status": "script_pending_approval"
+                    },
+                    "matchingColumns": [
+                        "ID"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "update-status",
+            "name": "Update Story Status",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                1780,
+                500
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "fileName": "={{ 'd:/n8nbot/data/scripts/' + $json.story_id + '_script.json' }}",
+                "dataPropertyName": "=script"
+            },
+            "id": "save-script",
+            "name": "Save Script to File",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                2000,
+                400
+            ],
+            "notes": "Saves the full script JSON for later use by Asset Generator"
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Story Selection",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Story Selection": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Story from Sheets",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Load Characters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Story from Sheets": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Story & Characters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Characters": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Story & Characters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Story & Characters": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Video Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Gemini LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "Generate Video Script",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Video Script": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Generated Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Generated Script": {
+            "main": [
+                [
+                    {
+                        "node": "Create Preview",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Preview": {
+            "main": [
+                [
+                    {
+                        "node": "Send for Approval (Slack)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Update Story Status",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save Script to File",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "kids-video-pipeline"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2026-02-01T15:00:00.000Z",
+    "versionId": "1"
+}

@@ -1,0 +1,231 @@
+{
+    "name": "Kids Story Video Template",
+    "width": 1080,
+    "height": 1920,
+    "frame_rate": 30,
+    "output_format": "mp4",
+    "elements": [
+        {
+            "id": "background-music",
+            "name": "Background Music",
+            "type": "audio",
+            "track": 1,
+            "source": "{{ background-music }}",
+            "volume": "{{ background-music-volume | default: 0.15 }}",
+            "time": 0,
+            "duration": "auto"
+        },
+        {
+            "id": "title-card",
+            "name": "Title Card",
+            "type": "composition",
+            "track": 2,
+            "time": 0,
+            "duration": 3,
+            "elements": [
+                {
+                    "type": "shape",
+                    "shape_type": "rectangle",
+                    "width": "100%",
+                    "height": "100%",
+                    "fill_color": "#FFB6C1",
+                    "gradient": {
+                        "type": "linear",
+                        "angle": 180,
+                        "stops": [
+                            {
+                                "offset": 0,
+                                "color": "#FFB6C1"
+                            },
+                            {
+                                "offset": 1,
+                                "color": "#DDA0DD"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "{{ title-text }}",
+                    "font_family": "Poppins",
+                    "font_weight": "800",
+                    "font_size": "64px",
+                    "color": "#FFFFFF",
+                    "stroke_color": "#FF69B4",
+                    "stroke_width": 4,
+                    "x": "50%",
+                    "y": "50%",
+                    "width": "80%",
+                    "text_align": "center",
+                    "animations": [
+                        {
+                            "type": "scale",
+                            "scale_start": 0.5,
+                            "scale_end": 1,
+                            "easing": "bounce",
+                            "duration": 0.8
+                        }
+                    ]
+                }
+            ],
+            "transition": {
+                "type": "fade",
+                "duration": 0.5
+            }
+        },
+        {
+            "id": "scene-container",
+            "name": "Scene Container",
+            "type": "composition",
+            "track": 3,
+            "time": 3,
+            "dynamic": true,
+            "comment": "Scenes are dynamically added here by the n8n workflow"
+        },
+        {
+            "id": "moral-card",
+            "name": "Moral Card",
+            "type": "composition",
+            "track": 4,
+            "time": "end - 5",
+            "duration": 4,
+            "elements": [
+                {
+                    "type": "shape",
+                    "shape_type": "rectangle",
+                    "width": "100%",
+                    "height": "100%",
+                    "fill_color": "#87CEEB",
+                    "gradient": {
+                        "type": "linear",
+                        "angle": 180,
+                        "stops": [
+                            {
+                                "offset": 0,
+                                "color": "#87CEEB"
+                            },
+                            {
+                                "offset": 1,
+                                "color": "#98FB98"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "💡 Moral of the Story",
+                    "font_family": "Poppins",
+                    "font_weight": "700",
+                    "font_size": "42px",
+                    "color": "#FFFFFF",
+                    "x": "50%",
+                    "y": "35%",
+                    "width": "80%",
+                    "text_align": "center"
+                },
+                {
+                    "type": "text",
+                    "text": "{{ moral-text }}",
+                    "font_family": "Poppins",
+                    "font_weight": "600",
+                    "font_size": "48px",
+                    "color": "#FFFFFF",
+                    "stroke_color": "#228B22",
+                    "stroke_width": 3,
+                    "x": "50%",
+                    "y": "55%",
+                    "width": "85%",
+                    "text_align": "center",
+                    "animations": [
+                        {
+                            "type": "fade",
+                            "fade": "in",
+                            "duration": 0.5
+                        }
+                    ]
+                }
+            ],
+            "transition": {
+                "type": "slide",
+                "direction": "up",
+                "duration": 0.5
+            }
+        },
+        {
+            "id": "cta-card",
+            "name": "Call to Action",
+            "type": "composition",
+            "track": 5,
+            "time": "end - 2",
+            "duration": 2,
+            "elements": [
+                {
+                    "type": "text",
+                    "text": "{{ cta-text | default: 'Follow for more stories!' }}",
+                    "font_family": "Poppins",
+                    "font_weight": "700",
+                    "font_size": "36px",
+                    "color": "#FFFFFF",
+                    "x": "50%",
+                    "y": "85%",
+                    "width": "90%",
+                    "text_align": "center",
+                    "animations": [
+                        {
+                            "type": "pulse",
+                            "scale": 1.1,
+                            "duration": 0.5,
+                            "loop": true
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": "👆 Subscribe 👆",
+                    "font_family": "Poppins",
+                    "font_weight": "600",
+                    "font_size": "28px",
+                    "color": "#FFD700",
+                    "x": "50%",
+                    "y": "92%",
+                    "width": "80%",
+                    "text_align": "center"
+                }
+            ]
+        },
+        {
+            "id": "watermark",
+            "name": "Channel Watermark",
+            "type": "text",
+            "track": 10,
+            "text": "@YourChannel",
+            "font_family": "Poppins",
+            "font_weight": "500",
+            "font_size": "24px",
+            "color": "rgba(255,255,255,0.7)",
+            "x": "50%",
+            "y": "5%",
+            "time": 0,
+            "duration": "auto"
+        }
+    ],
+    "default_animations": {
+        "image": {
+            "type": "ken-burns",
+            "scale_start": 1,
+            "scale_end": 1.1,
+            "easing": "linear"
+        },
+        "text_overlay": {
+            "type": "fade",
+            "fade": "in",
+            "duration": 0.3
+        }
+    },
+    "transitions": {
+        "default": {
+            "type": "fade",
+            "duration": 0.5
+        }
+    }
+}

@@ -1,0 +1,512 @@
+{
+    "name": "Asset Generator",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "story_id",
+                            "value": "={{ $json.story_id }}"
+                        },
+                        {
+                            "name": "script_path",
+                            "value": "={{ 'd:/n8nbot/data/scripts/' + $json.story_id + '_script.json' }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-params",
+            "name": "Set Parameters",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                460,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "filePath": "={{ $json.script_path }}"
+            },
+            "id": "load-script",
+            "name": "Load Script",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                680,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Parse script and prepare scenes for processing\nconst scriptData = JSON.parse($input.first().json.data);\nconst scenes = scriptData.scenes;\n\n// Return each scene as a separate item for loop processing\nreturn scenes.map(scene => ({\n  json: {\n    ...scene,\n    story_id: scriptData.story_id,\n    narrator: scriptData.narrator,\n    voice_settings: scriptData.voice_settings,\n    total_scenes: scenes.length\n  }\n}));"
+            },
+            "id": "prepare-scenes",
+            "name": "Prepare Scenes",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "batchSize": 1,
+                "options": {}
+            },
+            "id": "loop-scenes",
+            "name": "Loop Over Scenes",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 3,
+            "position": [
+                1120,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.elevenlabs.io/v1/text-to-speech/{{ $json.narrator.voice_id }}",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "xi-api-key",
+                            "value": "={{ $env.ELEVENLABS_API_KEY }}"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"text\": \"{{ $json.narration }}\",\n  \"model_id\": \"eleven_multilingual_v2\",\n  \"voice_settings\": {\n    \"stability\": {{ $json.voice_settings.narrator_stability || 0.5 }},\n    \"similarity_boost\": {{ $json.voice_settings.narrator_similarity_boost || 0.75 }},\n    \"style\": {{ $json.voice_settings.narrator_style || 0.4 }},\n    \"use_speaker_boost\": true\n  }\n}",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "file"
+                        }
+                    }
+                }
+            },
+            "id": "generate-voice",
+            "name": "Generate Voice (ElevenLabs)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1340,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "write",
+                "fileName": "={{ 'd:/n8nbot/data/assets/' + $json.story_id + '/audio_scene_' + $json.scene_number + '.mp3' }}",
+                "dataPropertyName": "data"
+            },
+            "id": "save-audio",
+            "name": "Save Audio File",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                1560,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://image.pollinations.ai/prompt/{{ encodeURIComponent($json.visual_prompt + ', ' + $json.narrator.visual_style + ', child-friendly cartoon illustration, vibrant colors, soft edges, safe for kids') }}?width=1080&height=1920&nologo=true&model=flux",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "file"
+                        }
+                    }
+                }
+            },
+            "id": "generate-image",
+            "name": "Generate Image (Pollinations)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1340,
+                500
+            ],
+            "notes": "Free API - generates images from prompts"
+        },
+        {
+            "parameters": {
+                "operation": "write",
+                "fileName": "={{ 'd:/n8nbot/data/assets/' + $json.story_id + '/image_scene_' + $json.scene_number + '.png' }}",
+                "dataPropertyName": "data"
+            },
+            "id": "save-image",
+            "name": "Save Image File",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                1560,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Collect assets for this scene\nconst scene = $('Loop Over Scenes').first().json;\n\nreturn [{\n  json: {\n    scene_number: scene.scene_number,\n    story_id: scene.story_id,\n    duration_seconds: scene.duration_seconds,\n    narration: scene.narration,\n    visual_prompt: scene.visual_prompt,\n    emotion: scene.emotion,\n    text_overlay: scene.text_overlay || '',\n    transition: scene.transition || 'fade',\n    audio_path: `d:/n8nbot/data/assets/${scene.story_id}/audio_scene_${scene.scene_number}.mp3`,\n    image_path: `d:/n8nbot/data/assets/${scene.story_id}/image_scene_${scene.scene_number}.png`,\n    total_scenes: scene.total_scenes\n  }\n}];"
+            },
+            "id": "collect-assets",
+            "name": "Collect Scene Assets",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1780,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict"
+                    },
+                    "conditions": [
+                        {
+                            "id": "check-done",
+                            "leftValue": "={{ $json.scene_number }}",
+                            "rightValue": "={{ $json.total_scenes }}",
+                            "operator": {
+                                "type": "number",
+                                "operation": "lt"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "check-more-scenes",
+            "name": "More Scenes?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                2000,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "aggregate": "aggregateAllItemData",
+                "options": {}
+            },
+            "id": "aggregate-assets",
+            "name": "Aggregate All Assets",
+            "type": "n8n-nodes-base.aggregate",
+            "typeVersion": 1,
+            "position": [
+                2220,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Create final asset manifest\nconst assets = $input.first().json.data;\nconst firstAsset = assets[0];\n\n// Select background music based on story mood\nconst musicTracks = {\n  cheerful: 'https://cdn.pixabay.com/audio/2024/01/kids-playful-happy.mp3',\n  adventure: 'https://cdn.pixabay.com/audio/2024/01/adventure-upbeat.mp3',\n  calm: 'https://cdn.pixabay.com/audio/2024/01/gentle-lullaby.mp3',\n  dramatic: 'https://cdn.pixabay.com/audio/2024/01/epic-story.mp3'\n};\n\n// Determine primary mood from scenes\nconst moods = assets.map(a => a.emotion);\nconst primaryMood = moods.includes('adventure') ? 'adventure' : \n                    moods.includes('dramatic') ? 'dramatic' :\n                    moods.includes('calm') ? 'calm' : 'cheerful';\n\nconst manifest = {\n  story_id: firstAsset.story_id,\n  total_duration: assets.reduce((sum, a) => sum + a.duration_seconds, 0),\n  scenes: assets.map(a => ({\n    scene_number: a.scene_number,\n    duration_seconds: a.duration_seconds,\n    audio_path: a.audio_path,\n    image_path: a.image_path,\n    text_overlay: a.text_overlay,\n    transition: a.transition\n  })),\n  background_music: {\n    url: musicTracks[primaryMood],\n    mood: primaryMood,\n    volume: 0.15\n  },\n  generated_at: new Date().toISOString(),\n  status: 'assets_ready'\n};\n\nreturn [{ json: manifest }];"
+            },
+            "id": "create-manifest",
+            "name": "Create Asset Manifest",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2440,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "write",
+                "fileName": "={{ 'd:/n8nbot/data/assets/' + $json.story_id + '/manifest.json' }}",
+                "dataPropertyName": "data"
+            },
+            "id": "save-manifest",
+            "name": "Save Manifest",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                2660,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ID": "={{ $json.story_id }}",
+                        "Status": "assets_ready"
+                    },
+                    "matchingColumns": [
+                        "ID"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "update-status",
+            "name": "Update Story Status",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                2880,
+                500
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.SLACK_CHANNEL || '#video-pipeline' }}",
+                "text": "=🎨 *Assets Generated for {{ $json.story_id }}*\n\n✅ {{ $json.scenes.length }} scenes processed\n🎵 Background music: {{ $json.background_music.mood }}\n⏱️ Total duration: {{ $json.total_duration }} seconds\n\nReady for video assembly! Trigger the Video Assembler workflow.",
+                "otherOptions": {}
+            },
+            "id": "notify-complete",
+            "name": "Notify Assets Complete",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2,
+            "position": [
+                3100,
+                500
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "SLACK_CREDENTIAL_ID",
+                    "name": "Slack API"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Parameters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Parameters": {
+            "main": [
+                [
+                    {
+                        "node": "Load Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Script": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Scenes",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Scenes": {
+            "main": [
+                [
+                    {
+                        "node": "Loop Over Scenes",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Loop Over Scenes": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Voice (ElevenLabs)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Generate Image (Pollinations)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Voice (ElevenLabs)": {
+            "main": [
+                [
+                    {
+                        "node": "Save Audio File",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Image (Pollinations)": {
+            "main": [
+                [
+                    {
+                        "node": "Save Image File",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Audio File": {
+            "main": [
+                [
+                    {
+                        "node": "Collect Scene Assets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Image File": {
+            "main": [
+                [
+                    {
+                        "node": "Collect Scene Assets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Collect Scene Assets": {
+            "main": [
+                [
+                    {
+                        "node": "More Scenes?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "More Scenes?": {
+            "main": [
+                [
+                    {
+                        "node": "Loop Over Scenes",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Aggregate All Assets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Aggregate All Assets": {
+            "main": [
+                [
+                    {
+                        "node": "Create Asset Manifest",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Asset Manifest": {
+            "main": [
+                [
+                    {
+                        "node": "Save Manifest",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Manifest": {
+            "main": [
+                [
+                    {
+                        "node": "Update Story Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Story Status": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Assets Complete",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "kids-video-pipeline"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2026-02-01T15:00:00.000Z",
+    "versionId": "1"
+}

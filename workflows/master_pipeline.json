@@ -1,0 +1,487 @@
+{
+    "name": "Master Pipeline Orchestrator",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "mode",
+                            "value": "={{ $json.mode || 'generate_topics' }}"
+                        },
+                        {
+                            "name": "story_id",
+                            "value": "={{ $json.story_id || '' }}"
+                        },
+                        {
+                            "name": "topic_request",
+                            "value": "={{ $json.topic_request || '' }}"
+                        },
+                        {
+                            "name": "story_origin",
+                            "value": "={{ $json.story_origin || 'Indian' }}"
+                        },
+                        {
+                            "name": "target_count",
+                            "value": "={{ $json.target_count || 10 }}"
+                        },
+                        {
+                            "name": "narrator",
+                            "value": "={{ $json.narrator || 'mira' }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-params",
+            "name": "Set Parameters",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                460,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "rules": [
+                        {
+                            "outputKey": "generate_topics",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "generate_topics",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "outputKey": "generate_script",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "generate_script",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "outputKey": "generate_assets",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "generate_assets",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "outputKey": "assemble_video",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "assemble_video",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "outputKey": "generate_metadata",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "generate_metadata",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "outputKey": "full_pipeline",
+                            "conditions": {
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.mode }}",
+                                        "rightValue": "full_pipeline",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "route-mode",
+            "name": "Route by Mode",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                680,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Topic Pool Generator"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "exec-topic-gen",
+            "name": "Execute Topic Generator",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Script Generator"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "exec-script-gen",
+            "name": "Execute Script Generator",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                320
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Asset Generator"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "exec-asset-gen",
+            "name": "Execute Asset Generator",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                440
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Video Assembler"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "exec-video-assembler",
+            "name": "Execute Video Assembler",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                560
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Platform Metadata Generator"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "exec-metadata-gen",
+            "name": "Execute Metadata Generator",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## Full Pipeline Mode\n\nWhen mode='full_pipeline', this executes all workflows in sequence for a single story.\n\n1. Script Generator (requires story_id)\n2. Asset Generator\n3. Video Assembler\n4. Metadata Generator\n\nNote: Topic generation is separate as it's batch processing.",
+                "height": 260,
+                "width": 300
+            },
+            "id": "note-full-pipeline",
+            "name": "Full Pipeline Note",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                1200,
+                740
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Script Generator"
+                },
+                "options": {
+                    "waitForSubWorkflow": true
+                }
+            },
+            "id": "full-script-gen",
+            "name": "1. Generate Script",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                920,
+                840
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## Master Pipeline Orchestrator\n\n### Modes:\n- `generate_topics` - Add stories to pool\n- `generate_script` - Create video script\n- `generate_assets` - Generate voice/images\n- `assemble_video` - Render final video\n- `generate_metadata` - Create SEO metadata\n- `full_pipeline` - Complete flow (script→video)\n\n### Required Inputs:\n- `mode`: One of the above\n- `story_id`: For individual story processing\n- `topic_request`: For topic generation\n- `narrator`: Character ID (mira/bolo/dadu/sunny)",
+                "height": 360,
+                "width": 320
+            },
+            "id": "main-note",
+            "name": "Instructions",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                60,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "status",
+                            "value": "completed"
+                        },
+                        {
+                            "name": "message",
+                            "value": "=Workflow '{{ $json.mode }}' completed successfully!"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "success-output",
+            "name": "Success Output",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                1200,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Parameters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Parameters": {
+            "main": [
+                [
+                    {
+                        "node": "Route by Mode",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Route by Mode": {
+            "main": [
+                [
+                    {
+                        "node": "Execute Topic Generator",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Execute Script Generator",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Execute Asset Generator",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Execute Video Assembler",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Execute Metadata Generator",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "1. Generate Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Topic Generator": {
+            "main": [
+                [
+                    {
+                        "node": "Success Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Script Generator": {
+            "main": [
+                [
+                    {
+                        "node": "Success Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Asset Generator": {
+            "main": [
+                [
+                    {
+                        "node": "Success Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Video Assembler": {
+            "main": [
+                [
+                    {
+                        "node": "Success Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Metadata Generator": {
+            "main": [
+                [
+                    {
+                        "node": "Success Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "1. Generate Script": {
+            "main": [
+                [
+                    {
+                        "node": "Execute Asset Generator",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "kids-video-pipeline"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2026-02-01T15:00:00.000Z",
+    "versionId": "1"
+}

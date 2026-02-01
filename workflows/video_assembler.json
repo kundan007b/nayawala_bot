@@ -1,0 +1,534 @@
+{
+    "name": "Video Assembler",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "story_id",
+                            "value": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-story-id",
+            "name": "Set Story ID",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                460,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "filePath": "={{ 'd:/n8nbot/data/assets/' + $json.story_id + '/manifest.json' }}"
+            },
+            "id": "load-manifest",
+            "name": "Load Asset Manifest",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                680,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "filePath": "={{ 'd:/n8nbot/data/scripts/' + $('Set Story ID').first().json.story_id + '_script.json' }}"
+            },
+            "id": "load-script",
+            "name": "Load Script",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                680,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Combine manifest and script data\nconst manifest = JSON.parse($('Load Asset Manifest').first().json.data);\nconst script = JSON.parse($('Load Script').first().json.data);\n\nreturn [{\n  json: {\n    manifest,\n    script,\n    story_id: manifest.story_id\n  }\n}];"
+            },
+            "id": "merge-data",
+            "name": "Merge Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build Creatomate render payload\nconst { manifest, script } = $input.first().json;\n\n// Base template for vertical video (9:16)\nconst renderPayload = {\n  template_id: \"{{ $env.CREATOMATE_TEMPLATE_ID }}\", // Set your template ID\n  output_format: \"mp4\",\n  width: 1080,\n  height: 1920,\n  frame_rate: 30,\n  modifications: [\n    // Title overlay at the start\n    {\n      \"title-text\": script.hook || script.title\n    },\n    // Moral text at the end\n    {\n      \"moral-text\": script.moral_text\n    },\n    // Call to action\n    {\n      \"cta-text\": script.call_to_action || \"Follow for more stories!\"\n    },\n    // Background music\n    {\n      \"background-music\": manifest.background_music.url,\n      \"background-music-volume\": manifest.background_music.volume\n    }\n  ],\n  // Dynamic elements for each scene\n  elements: []\n};\n\n// Add scene elements\nmanifest.scenes.forEach((scene, index) => {\n  // Scene timing\n  const startTime = manifest.scenes\n    .slice(0, index)\n    .reduce((sum, s) => sum + s.duration_seconds, 0);\n  \n  // Add image for scene\n  renderPayload.elements.push({\n    type: \"image\",\n    source: scene.image_path,\n    track: 1,\n    time: startTime,\n    duration: scene.duration_seconds,\n    animations: [\n      {\n        type: \"ken-burns\",\n        scale_start: 1,\n        scale_end: 1.1,\n        easing: \"linear\"\n      }\n    ],\n    transition: {\n      type: scene.transition || \"fade\",\n      duration: 0.5\n    }\n  });\n  \n  // Add voiceover for scene\n  renderPayload.elements.push({\n    type: \"audio\",\n    source: scene.audio_path,\n    track: 2,\n    time: startTime,\n    volume: 1.0\n  });\n  \n  // Add text overlay if present\n  if (scene.text_overlay) {\n    renderPayload.elements.push({\n      type: \"text\",\n      text: scene.text_overlay,\n      track: 3,\n      time: startTime,\n      duration: scene.duration_seconds,\n      font_family: \"Poppins\",\n      font_weight: \"700\",\n      font_size: \"48px\",\n      color: \"#FFFFFF\",\n      stroke_color: \"#000000\",\n      stroke_width: 3,\n      x: \"50%\",\n      y: \"85%\",\n      width: \"90%\",\n      text_align: \"center\",\n      animations: [\n        {\n          type: \"fade\",\n          fade: \"in\",\n          duration: 0.3\n        }\n      ]\n    });\n  }\n});\n\nreturn [{\n  json: {\n    render_payload: renderPayload,\n    story_id: manifest.story_id,\n    total_duration: manifest.total_duration,\n    script_title: script.title\n  }\n}];"
+            },
+            "id": "build-render-payload",
+            "name": "Build Render Payload",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1120,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.creatomate.com/v1/renders",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.CREATOMATE_API_KEY }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json.render_payload) }}",
+                "options": {}
+            },
+            "id": "start-render",
+            "name": "Start Render (Creatomate)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1340,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extract render ID for polling\nconst response = $input.first().json;\nconst previousData = $('Build Render Payload').first().json;\n\nreturn [{\n  json: {\n    render_id: response.id || response[0]?.id,\n    story_id: previousData.story_id,\n    script_title: previousData.script_title,\n    status: 'rendering'\n  }\n}];"
+            },
+            "id": "get-render-id",
+            "name": "Get Render ID",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1560,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "amount": 10,
+                "unit": "seconds"
+            },
+            "id": "wait",
+            "name": "Wait 10s",
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1.1,
+            "position": [
+                1780,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "=https://api.creatomate.com/v1/renders/{{ $json.render_id }}",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer {{ $env.CREATOMATE_API_KEY }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "check-status",
+            "name": "Check Render Status",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2000,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict"
+                    },
+                    "conditions": [
+                        {
+                            "id": "check-complete",
+                            "leftValue": "={{ $json.status }}",
+                            "rightValue": "succeeded",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "is-complete",
+            "name": "Render Complete?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                2220,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Get the completed render data\nconst renderData = $input.first().json;\nconst previousData = $('Get Render ID').first().json;\n\nreturn [{\n  json: {\n    render_id: renderData.id,\n    story_id: previousData.story_id,\n    script_title: previousData.script_title,\n    video_url: renderData.url,\n    status: 'completed'\n  }\n}];"
+            },
+            "id": "get-video-url",
+            "name": "Get Video URL",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2440,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ $json.video_url }}",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "file"
+                        }
+                    }
+                }
+            },
+            "id": "download-video",
+            "name": "Download Video",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2660,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "write",
+                "fileName": "={{ 'd:/n8nbot/data/videos/' + $('Get Video URL').first().json.story_id + '_final.mp4' }}",
+                "dataPropertyName": "data"
+            },
+            "id": "save-video",
+            "name": "Save Video",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                2880,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ID": "={{ $('Get Video URL').first().json.story_id }}",
+                        "Status": "video_ready",
+                        "Video URL": "={{ $('Get Video URL').first().json.video_url }}"
+                    },
+                    "matchingColumns": [
+                        "ID"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "update-sheets",
+            "name": "Update Google Sheets",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                3100,
+                400
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.SLACK_CHANNEL || '#video-pipeline' }}",
+                "text": "=🎬 *Video Ready!*\n\n📺 *{{ $('Get Video URL').first().json.script_title }}*\n\nStory ID: `{{ $('Get Video URL').first().json.story_id }}`\n🎥 [Download Video]({{ $('Get Video URL').first().json.video_url }})\n📁 Saved to: `d:/n8nbot/data/videos/`\n\n✅ Ready for metadata generation and publishing!",
+                "otherOptions": {}
+            },
+            "id": "notify-complete",
+            "name": "Notify Video Complete",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2,
+            "position": [
+                3320,
+                400
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "SLACK_CREDENTIAL_ID",
+                    "name": "Slack API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Continue polling - video still rendering\nconst previousData = $('Get Render ID').first().json;\n\nreturn [{\n  json: {\n    render_id: previousData.render_id,\n    story_id: previousData.story_id,\n    script_title: previousData.script_title,\n    status: 'still_rendering'\n  }\n}];"
+            },
+            "id": "continue-polling",
+            "name": "Continue Polling",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2440,
+                600
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Story ID",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Story ID": {
+            "main": [
+                [
+                    {
+                        "node": "Load Asset Manifest",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Load Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Asset Manifest": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Script": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Data": {
+            "main": [
+                [
+                    {
+                        "node": "Build Render Payload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Render Payload": {
+            "main": [
+                [
+                    {
+                        "node": "Start Render (Creatomate)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Start Render (Creatomate)": {
+            "main": [
+                [
+                    {
+                        "node": "Get Render ID",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Render ID": {
+            "main": [
+                [
+                    {
+                        "node": "Wait 10s",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Wait 10s": {
+            "main": [
+                [
+                    {
+                        "node": "Check Render Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Render Status": {
+            "main": [
+                [
+                    {
+                        "node": "Render Complete?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Render Complete?": {
+            "main": [
+                [
+                    {
+                        "node": "Get Video URL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Continue Polling",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Video URL": {
+            "main": [
+                [
+                    {
+                        "node": "Download Video",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Download Video": {
+            "main": [
+                [
+                    {
+                        "node": "Save Video",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Video": {
+            "main": [
+                [
+                    {
+                        "node": "Update Google Sheets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Google Sheets": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Video Complete",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Continue Polling": {
+            "main": [
+                [
+                    {
+                        "node": "Wait 10s",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "kids-video-pipeline"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2026-02-01T15:00:00.000Z",
+    "versionId": "1"
+}

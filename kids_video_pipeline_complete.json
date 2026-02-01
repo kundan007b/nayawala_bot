@@ -1,0 +1,577 @@
+{
+    "name": "Kids Video Pipeline - Complete",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "d1e2f3a4-5b6c-7d8e-9f0a-1b2c3d4e5f6a",
+            "name": "Start Pipeline",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                560
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "raw",
+                "jsonOutput": "={\n  \"mode\": \"{{ $json.mode || 'generate_topics' }}\",\n  \"topic_request\": \"{{ $json.topic_request || '10 Panchatantra stories for children' }}\",\n  \"story_origin\": \"{{ $json.story_origin || 'Indian' }}\",\n  \"target_count\": {{ $json.target_count || 10 }},\n  \"story_id\": \"{{ $json.story_id || '' }}\",\n  \"narrator\": \"{{ $json.narrator || 'mira' }}\"\n}",
+                "options": {}
+            },
+            "id": "a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+            "name": "Set Input Parameters",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                460,
+                560
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.mode }}",
+                            "value2": "generate_topics"
+                        }
+                    ]
+                }
+            },
+            "id": "b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+            "name": "Is Generate Topics?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                680,
+                360
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.mode }}",
+                            "value2": "generate_script"
+                        }
+                    ]
+                }
+            },
+            "id": "c3d4e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+            "name": "Is Generate Script?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                680,
+                560
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.mode }}",
+                            "value2": "generate_metadata"
+                        }
+                    ]
+                }
+            },
+            "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+            "name": "Is Generate Metadata?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                680,
+                760
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.perplexity.ai/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "=Bearer {{ $env.PERPLEXITY_API_KEY }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"model\": \"llama-3.1-sonar-small-128k-online\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a children's story researcher for kids aged 3-8. Return a JSON array with fields: title, summary (2-3 engaging sentences), characters (array), moral, origin_country, difficulty (easy/medium).\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Find {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}. Return ONLY a valid JSON array.\"\n    }\n  ],\n  \"temperature\": 0.2\n}",
+                "options": {}
+            },
+            "id": "e5f6a7b8-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
+            "name": "Search Stories (Perplexity)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                920,
+                280
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $input.first().json;\nlet content = response.choices[0].message.content;\nlet stories = [];\n\ntry {\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', raw: content.substring(0, 500) } }];\n}\n\nconst timestamp = new Date().toISOString();\nreturn stories.map((story, index) => ({\n  json: {\n    id: `story_${Date.now()}_${index}`,\n    title: story.title || 'Untitled',\n    summary: story.summary || '',\n    characters: Array.isArray(story.characters) ? story.characters.join(', ') : (story.characters || ''),\n    moral: story.moral || '',\n    origin: story.origin_country || story.origin || '',\n    difficulty: story.difficulty || 'easy',\n    status: 'pending',\n    created_at: timestamp\n  }\n}));"
+            },
+            "id": "f6a7b8c9-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
+            "name": "Parse Stories",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1140,
+                280
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ID": "={{ $json.id }}",
+                        "Title": "={{ $json.title }}",
+                        "Summary": "={{ $json.summary }}",
+                        "Characters": "={{ $json.characters }}",
+                        "Moral": "={{ $json.moral }}",
+                        "Origin": "={{ $json.origin }}",
+                        "Difficulty": "={{ $json.difficulty }}",
+                        "Status": "={{ $json.status }}",
+                        "Created_At": "={{ $json.created_at }}"
+                    }
+                },
+                "options": {}
+            },
+            "id": "a7b8c9d0-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+            "name": "Save to Google Sheets",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                1360,
+                280
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "ID",
+                            "lookupValue": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "b8c9d0e1-2f3a-4b5c-6d7e-8f9a0b1c2d3e",
+            "name": "Fetch Story from Sheet",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                920,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const story = $input.first().json;\nconst narratorId = $('Set Input Parameters').first().json.narrator || 'mira';\n\nconst characters = {\n  mira: {\n    name: 'Mira the Storyteller',\n    voice_id: 'EXAVITQu4vr4xnSDxMaL',\n    visual_style: 'Young Indian girl, 10 years old, long black hair, colorful dress, warm smile, cartoon style',\n    intro: 'Hello little friends! Mira here with a wonderful story!',\n    catchphrase: 'And thats how we learn to be kind!'\n  },\n  bolo: {\n    name: 'Bolo the Parrot',\n    voice_id: 'TxGEqnHWrfWFTfGW9XjX',\n    visual_style: 'Bright green parrot, red beak, expressive cartoon eyes, fluffy feathers',\n    intro: 'Bolo is here! Ready for adventure!',\n    catchphrase: 'Squawk! Thats amazing!'\n  },\n  dadu: {\n    name: 'Dadu the Wise Owl',\n    voice_id: 'VR6AewLTigWG4xSOukaG',\n    visual_style: 'Wise old owl with round spectacles, brown feathers, gentle expression',\n    intro: 'Gather around children. Dadu has a story to share.',\n    catchphrase: 'Wisdom is the greatest treasure.'\n  },\n  sunny: {\n    name: 'Sunny the Elephant',\n    voice_id: 'pNInz6obpgDQGcFmaJgB',\n    visual_style: 'Baby elephant with big ears, pink cheeks, colorful hat, cartoon style',\n    intro: 'Sunny here! Lets go on an adventure!',\n    catchphrase: 'Together we can do anything!'\n  }\n};\n\nconst narrator = characters[narratorId] || characters.mira;\n\nreturn [{\n  json: {\n    story: story,\n    narrator: narrator,\n    narrator_id: narratorId\n  }\n}];"
+            },
+            "id": "c9d0e1f2-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
+            "name": "Get Narrator Character",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1140,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_GEMINI_API_KEY }}"
+                        }
+                    ]
+                },
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a children's video script writer. Create a 60-second YouTube Shorts script.\\n\\nStory Title: {{ $json.story.Title }}\\nSummary: {{ $json.story.Summary }}\\nMoral: {{ $json.story.Moral }}\\n\\nNarrator: {{ $json.narrator.name }}\\nIntro: {{ $json.narrator.intro }}\\nCatchphrase: {{ $json.narrator.catchphrase }}\\n\\nCreate 6-8 scenes (7-10 seconds each). Return ONLY valid JSON:\\n{\\n  \\\"title\\\": \\\"YouTube title with emoji\\\",\\n  \\\"hook\\\": \\\"First 3 seconds text\\\",\\n  \\\"scenes\\\": [{\\n    \\\"scene_number\\\": 1,\\n    \\\"duration_seconds\\\": 8,\\n    \\\"narration\\\": \\\"What narrator says\\\",\\n    \\\"visual_prompt\\\": \\\"Image prompt for scene\\\",\\n    \\\"emotion\\\": \\\"cheerful\\\"\\n  }],\\n  \\\"moral_text\\\": \\\"Simple moral\\\",\\n  \\\"call_to_action\\\": \\\"Follow for more!\\\"\\n}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.7,\n    \"maxOutputTokens\": 4096\n  }\n}",
+                "options": {}
+            },
+            "id": "d0e1f2a3-4b5c-6d7e-8f9a-0b1c2d3e4f5a",
+            "name": "Generate Script (Gemini)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1360,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $input.first().json;\nlet text = '';\n\ntry {\n  text = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response from Gemini', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet script;\ntry {\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/) || text.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    script = JSON.parse(jsonMatch[1]);\n  } else {\n    const objectMatch = text.match(/\\{[\\s\\S]*\\}/);\n    script = JSON.parse(objectMatch[0]);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse script', raw: text.substring(0, 500) } }];\n}\n\nconst previousData = $('Get Narrator Character').first().json;\n\nreturn [{\n  json: {\n    ...script,\n    story_id: previousData.story.ID,\n    story_title: previousData.story.Title,\n    narrator: previousData.narrator,\n    narrator_id: previousData.narrator_id,\n    generated_at: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "e1f2a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
+            "name": "Parse Script Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1580,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const script = $input.first().json;\n\nlet preview = '📺 VIDEO SCRIPT PREVIEW\\n\\n';\npreview += '🎬 Title: ' + script.title + '\\n';\npreview += '🎯 Hook: ' + script.hook + '\\n';\npreview += '🎭 Narrator: ' + script.narrator.name + '\\n\\n';\npreview += '📜 SCENES:\\n\\n';\n\nif (script.scenes && Array.isArray(script.scenes)) {\n  script.scenes.forEach((scene) => {\n    preview += 'Scene ' + scene.scene_number + ' (' + scene.duration_seconds + 's)\\n';\n    preview += '🗣️ \"' + scene.narration + '\"\\n';\n    preview += '🖼️ ' + (scene.visual_prompt || '').substring(0, 80) + '...\\n\\n';\n  });\n}\n\npreview += '💡 Moral: ' + script.moral_text + '\\n';\npreview += '📢 CTA: ' + script.call_to_action;\n\nreturn [{\n  json: {\n    ...script,\n    preview_text: preview\n  }\n}];"
+            },
+            "id": "f2a3b4c5-6d7e-8f9a-0b1c-2d3e4f5a6b7c",
+            "name": "Create Script Preview",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1800,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "ID",
+                            "lookupValue": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "a3b4c5d6-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+            "name": "Fetch Story for Metadata",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                920,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_GEMINI_API_KEY }}"
+                        }
+                    ]
+                },
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Generate SEO metadata for children's video on YouTube, Instagram, TikTok.\\n\\nStory: {{ $json.Title }}\\nSummary: {{ $json.Summary }}\\nMoral: {{ $json.Moral }}\\n\\nReturn ONLY valid JSON:\\n{\\n  \\\"youtube\\\": {\\n    \\\"title\\\": \\\"60 chars max with emoji #shorts\\\",\\n    \\\"description\\\": \\\"100-150 words with keywords\\\",\\n    \\\"tags\\\": [\\\"tag1\\\", \\\"tag2\\\"],\\n    \\\"hashtags\\\": [\\\"#kids\\\", \\\"#stories\\\"]\\n  },\\n  \\\"instagram\\\": {\\n    \\\"caption\\\": \\\"Engaging caption with line breaks\\\",\\n    \\\"hashtags\\\": [\\\"#kidscontent\\\", \\\"#storytime\\\"]\\n  },\\n  \\\"tiktok\\\": {\\n    \\\"caption\\\": \\\"150 chars max catchy caption\\\",\\n    \\\"hashtags\\\": [\\\"#kidstok\\\", \\\"#storytime\\\"]\\n  }\\n}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.5,\n    \"maxOutputTokens\": 2048\n  }\n}",
+                "options": {}
+            },
+            "id": "b4c5d6e7-8f9a-0b1c-2d3e-4f5a6b7c8d9e",
+            "name": "Generate Metadata (Gemini)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1140,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $input.first().json;\nlet text = '';\n\ntry {\n  text = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet metadata;\ntry {\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    metadata = JSON.parse(jsonMatch[1]);\n  } else {\n    metadata = JSON.parse(text.match(/\\{[\\s\\S]*\\}/)[0]);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse metadata', raw: text.substring(0, 500) } }];\n}\n\nconst storyData = $('Fetch Story for Metadata').first().json;\n\nreturn [{\n  json: {\n    story_id: storyData.ID,\n    story_title: storyData.Title,\n    youtube: metadata.youtube,\n    instagram: metadata.instagram,\n    tiktok: metadata.tiktok,\n    generated_at: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "c5d6e7f8-9a0b-1c2d-3e4f-5a6b7c8d9e0f",
+            "name": "Parse Metadata Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1360,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const meta = $input.first().json;\n\nlet summary = '📊 METADATA GENERATED\\n\\n';\nsummary += 'Story: ' + meta.story_title + '\\n';\nsummary += 'ID: ' + meta.story_id + '\\n\\n';\n\nif (meta.youtube) {\n  summary += '📺 YOUTUBE\\n';\n  summary += 'Title: ' + meta.youtube.title + '\\n';\n  summary += 'Tags: ' + (meta.youtube.tags || []).slice(0, 5).join(', ') + '\\n\\n';\n}\n\nif (meta.instagram) {\n  summary += '📸 INSTAGRAM\\n';\n  summary += 'Hashtags: ' + (meta.instagram.hashtags || []).length + ' tags\\n\\n';\n}\n\nif (meta.tiktok) {\n  summary += '🎵 TIKTOK\\n';\n  summary += 'Caption: ' + (meta.tiktok.caption || '').substring(0, 50) + '...\\n\\n';\n}\n\nsummary += '✅ Ready to publish!';\n\nreturn [{\n  json: {\n    ...meta,\n    summary: summary\n  }\n}];"
+            },
+            "id": "d6e7f8a9-0b1c-2d3e-4f5a-6b7c8d9e0f1a",
+            "name": "Format Metadata Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1580,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## 🎬 Kids Video Pipeline\n\n### Modes:\n- `generate_topics` - Research stories from web\n- `generate_script` - Create video script\n- `generate_metadata` - Create SEO metadata\n\n### Input for Topics:\n```json\n{\n  \"mode\": \"generate_topics\",\n  \"topic_request\": \"10 Panchatantra stories\",\n  \"story_origin\": \"Indian\",\n  \"target_count\": 10\n}\n```\n\n### Input for Script/Metadata:\n```json\n{\n  \"mode\": \"generate_script\",\n  \"story_id\": \"story_1234567890_0\",\n  \"narrator\": \"mira\"\n}\n```\n\n### Narrators:\n- mira (girl storyteller)\n- bolo (parrot)\n- dadu (wise owl)\n- sunny (elephant)",
+                "height": 480,
+                "width": 300,
+                "color": 4
+            },
+            "id": "e7f8a9b0-1c2d-3e4f-5a6b-7c8d9e0f1a2b",
+            "name": "Instructions",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                -80,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## 🔑 Environment Variables\n\nSet these in n8n Settings:\n\n- `GOOGLE_SHEET_ID`\n- `PERPLEXITY_API_KEY`\n- `GOOGLE_GEMINI_API_KEY`\n- `ELEVENLABS_API_KEY`\n- `CREATOMATE_API_KEY`\n\n### Google Sheet Columns:\nID | Title | Summary | Characters | Moral | Origin | Difficulty | Status | Created_At",
+                "height": 320,
+                "width": 300,
+                "color": 5
+            },
+            "id": "f8a9b0c1-2d3e-4f5a-6b7c-8d9e0f1a2b3c",
+            "name": "Setup Notes",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                -80,
+                760
+            ]
+        }
+    ],
+    "connections": {
+        "Start Pipeline": {
+            "main": [
+                [
+                    {
+                        "node": "Set Input Parameters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Input Parameters": {
+            "main": [
+                [
+                    {
+                        "node": "Is Generate Topics?",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Is Generate Script?",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Is Generate Metadata?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Generate Topics?": {
+            "main": [
+                [
+                    {
+                        "node": "Search Stories (Perplexity)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Generate Script?": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Story from Sheet",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Generate Metadata?": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Story for Metadata",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Search Stories (Perplexity)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Stories",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Stories": {
+            "main": [
+                [
+                    {
+                        "node": "Save to Google Sheets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Story from Sheet": {
+            "main": [
+                [
+                    {
+                        "node": "Get Narrator Character",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Narrator Character": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Script (Gemini)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Script (Gemini)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Script Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Script Response": {
+            "main": [
+                [
+                    {
+                        "node": "Create Script Preview",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Story for Metadata": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Metadata (Gemini)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Metadata (Gemini)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Metadata Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Metadata Response": {
+            "main": [
+                [
+                    {
+                        "node": "Format Metadata Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "pinData": {},
+    "versionId": "1"
+}

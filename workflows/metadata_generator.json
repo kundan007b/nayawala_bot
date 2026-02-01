@@ -1,0 +1,381 @@
+{
+    "name": "Platform Metadata Generator",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "story_id",
+                            "value": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-story-id",
+            "name": "Set Story ID",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                460,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "filtersUI": {
+                    "values": [
+                        {
+                            "lookupColumn": "ID",
+                            "lookupValue": "={{ $json.story_id }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "fetch-story",
+            "name": "Fetch Story Details",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                680,
+                400
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "filePath": "={{ 'd:/n8nbot/data/scripts/' + $('Set Story ID').first().json.story_id + '_script.json' }}"
+            },
+            "id": "load-script",
+            "name": "Load Script",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                680,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Combine story and script data\nconst story = $('Fetch Story Details').first().json;\nconst script = JSON.parse($('Load Script').first().json.data);\n\nreturn [{\n  json: {\n    story,\n    script,\n    story_id: story.ID\n  }\n}];"
+            },
+            "id": "merge-data",
+            "name": "Merge Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gemini-2.0-flash",
+                "options": {
+                    "temperature": 0.5,
+                    "maxOutputTokens": 2048
+                }
+            },
+            "id": "gemini-llm",
+            "name": "Google Gemini LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+            "typeVersion": 1,
+            "position": [
+                1120,
+                600
+            ],
+            "credentials": {
+                "googleGeminiApi": {
+                    "id": "GOOGLE_GEMINI_CREDENTIAL_ID",
+                    "name": "Google Gemini API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "prompt": "=You are an SEO expert specializing in children's content across YouTube, Instagram, and TikTok. Generate optimized metadata for a children's story video.\n\n## Story Information:\n- Title: {{ $json.story.Title }}\n- Summary: {{ $json.story.Summary }}\n- Moral: {{ $json.story.Moral }}\n- Origin: {{ $json.story.Origin }}\n- Characters: {{ $json.story.Characters }}\n- Video Hook: {{ $json.script.hook }}\n\n## Requirements:\n\n### YouTube Shorts:\n- Title: Max 60 chars, use emojis, include \"shorts\" or \"#shorts\"\n- Description: 100-150 words, keywords rich, include moral lesson\n- Tags: 15-20 relevant tags\n- Hashtags: 3-5 hashtags for description\n\n### Instagram Reels:\n- Caption: Max 2200 chars, engaging hook first line, use line breaks\n- Hashtags: 25-30 relevant hashtags (mix of popular and niche)\n- Alt text: Descriptive text for accessibility\n\n### TikTok:\n- Caption: Max 150 chars, catchy and concise\n- Hashtags: 4-5 trending + niche hashtags\n- Suggested sounds: 2-3 trending child-friendly sounds/music\n\n## Output Format (JSON):\n```json\n{\n  \"youtube\": {\n    \"title\": \"...\",\n    \"description\": \"...\",\n    \"tags\": [\"tag1\", \"tag2\", ...],\n    \"hashtags\": [\"#hashtag1\", ...],\n    \"category\": \"Entertainment\" or \"Education\"\n  },\n  \"instagram\": {\n    \"caption\": \"...\",\n    \"hashtags\": [\"#hashtag1\", ...],\n    \"alt_text\": \"...\"\n  },\n  \"tiktok\": {\n    \"caption\": \"...\",\n    \"hashtags\": [\"#hashtag1\", ...],\n    \"suggested_sounds\": [\"sound1\", ...]\n  },\n  \"seo_keywords\": [\"keyword1\", \"keyword2\", ...]\n}\n```\n\nGenerate optimized metadata now:",
+                "options": {}
+            },
+            "id": "generate-metadata",
+            "name": "Generate Platform Metadata",
+            "type": "@n8n/n8n-nodes-langchain.chainLlm",
+            "typeVersion": 1.4,
+            "position": [
+                1120,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Parse the generated metadata\nconst response = $input.first().json.text || $input.first().json.response;\nlet metadata;\n\ntry {\n  const jsonMatch = response.match(/```json\\s*([\\s\\S]*?)```/) || response.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    metadata = JSON.parse(jsonMatch[1]);\n  } else {\n    const objectMatch = response.match(/\\{[\\s\\S]*\\}/);\n    if (objectMatch) {\n      metadata = JSON.parse(objectMatch[0]);\n    } else {\n      throw new Error('No JSON found');\n    }\n  }\n} catch (e) {\n  return [{\n    json: {\n      error: 'Failed to parse metadata',\n      raw_response: response\n    }\n  }];\n}\n\nconst previousData = $('Merge Data').first().json;\n\nreturn [{\n  json: {\n    story_id: previousData.story_id,\n    ...metadata,\n    generated_at: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "parse-metadata",
+            "name": "Parse Metadata",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1340,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "write",
+                "fileName": "={{ 'd:/n8nbot/data/metadata/' + $json.story_id + '_metadata.json' }}",
+                "dataPropertyName": "data"
+            },
+            "id": "save-metadata",
+            "name": "Save Metadata",
+            "type": "n8n-nodes-base.readWriteFile",
+            "typeVersion": 1,
+            "position": [
+                1560,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "={{ $env.GOOGLE_SHEET_ID }}"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "Story Pool"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ID": "={{ $json.story_id }}",
+                        "Status": "ready_to_publish"
+                    },
+                    "matchingColumns": [
+                        "ID"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "update-status",
+            "name": "Update Story Status",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                1780,
+                400
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+                    "name": "Google Sheets OAuth2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Create formatted preview\nconst meta = $('Parse Metadata').first().json;\n\nlet preview = `📊 **METADATA GENERATED**\\n\\n`;\npreview += `**Story ID:** ${meta.story_id}\\n\\n`;\n\npreview += `---\\n📺 **YOUTUBE SHORTS**\\n`;\npreview += `**Title:** ${meta.youtube.title}\\n`;\npreview += `**Hashtags:** ${meta.youtube.hashtags.join(' ')}\\n`;\npreview += `**Tags:** ${meta.youtube.tags.slice(0, 5).join(', ')}...\\n\\n`;\n\npreview += `---\\n📸 **INSTAGRAM REELS**\\n`;\npreview += `**Caption (first 100 chars):** ${meta.instagram.caption.substring(0, 100)}...\\n`;\npreview += `**Hashtag Count:** ${meta.instagram.hashtags.length}\\n\\n`;\n\npreview += `---\\n🎵 **TIKTOK**\\n`;\npreview += `**Caption:** ${meta.tiktok.caption}\\n`;\npreview += `**Hashtags:** ${meta.tiktok.hashtags.join(' ')}\\n`;\npreview += `**Suggested Sounds:** ${meta.tiktok.suggested_sounds.join(', ')}\\n\\n`;\n\npreview += `---\\n✅ **Ready to publish!**`;\n\nreturn [{\n  json: {\n    ...meta,\n    preview_text: preview\n  }\n}];"
+            },
+            "id": "format-preview",
+            "name": "Format Preview",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2000,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.SLACK_CHANNEL || '#video-pipeline' }}",
+                "text": "={{ $json.preview_text }}",
+                "otherOptions": {}
+            },
+            "id": "notify-complete",
+            "name": "Notify Metadata Ready",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2,
+            "position": [
+                2220,
+                400
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "SLACK_CREDENTIAL_ID",
+                    "name": "Slack API"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Story ID",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Story ID": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Story Details",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Load Script",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Story Details": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Load Script": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Data": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Platform Metadata",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Gemini LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "Generate Platform Metadata",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Platform Metadata": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Metadata",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Metadata": {
+            "main": [
+                [
+                    {
+                        "node": "Save Metadata",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Metadata": {
+            "main": [
+                [
+                    {
+                        "node": "Update Story Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Story Status": {
+            "main": [
+                [
+                    {
+                        "node": "Format Preview",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Preview": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Metadata Ready",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "kids-video-pipeline"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2026-02-01T15:00:00.000Z",
+    "versionId": "1"
+}
