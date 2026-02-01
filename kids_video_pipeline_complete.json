@@ -29,6 +29,39 @@
         },
         {
             "parameters": {
+                "jsCode": "// Input Validation Node\nconst input = $input.first().json;\nconst errors = [];\n\n// Validate mode\nconst validModes = ['generate_topics', 'generate_script', 'generate_metadata'];\nif (!validModes.includes(input.mode)) {\n  errors.push(`Invalid mode '${input.mode}'. Must be one of: ${validModes.join(', ')}`);\n}\n\n// Validate story_id for script/metadata modes\nif (['generate_script', 'generate_metadata'].includes(input.mode)) {\n  if (!input.story_id || input.story_id.trim() === '') {\n    errors.push(`story_id is required for mode '${input.mode}'`);\n  }\n}\n\n// Validate target_count for topics mode\nif (input.mode === 'generate_topics') {\n  const count = parseInt(input.target_count);\n  if (isNaN(count) || count < 1 || count > 50) {\n    errors.push(`target_count must be between 1 and 50 (got: ${input.target_count})`);\n  }\n}\n\n// Validate narrator\nconst validNarrators = ['mira', 'bolo', 'dadu', 'sunny'];\nif (input.narrator && !validNarrators.includes(input.narrator)) {\n  // Don't error, just warn and default to mira\n  input.narrator = 'mira';\n  input.narrator_warning = `Invalid narrator, defaulting to 'mira'`;\n}\n\nif (errors.length > 0) {\n  return [{\n    json: {\n      ...input,\n      validation_error: true,\n      errors: errors,\n      error_message: '❌ Validation Failed:\\n' + errors.map((e, i) => `${i+1}. ${e}`).join('\\n')\n    }\n  }];\n}\n\nreturn [{ json: { ...input, validation_error: false } }];"
+            },
+            "id": "val1d4t10n-n0d3-1234-5678-90abcdef1234",
+            "name": "Validate Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                560,
+                560
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.validation_error }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "v4l1d-ch3ck-1234-5678-90abcdef5678",
+            "name": "Validation Failed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                680,
+                560
+            ]
+        },
+        {
+            "parameters": {
                 "conditions": {
                     "string": [
                         {
@@ -43,7 +76,7 @@
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
             "position": [
-                680,
+                900,
                 360
             ]
         },
@@ -63,7 +96,7 @@
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
             "position": [
-                680,
+                900,
                 560
             ]
         },
@@ -83,7 +116,7 @@
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
             "position": [
-                680,
+                900,
                 760
             ]
         },
@@ -112,28 +145,72 @@
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a children's story researcher for kids aged 3-8. Search and find {{ $json.target_count }} {{ $json.story_origin }} {{ $json.topic_request }}.\\n\\nFor each story, provide:\\n- title: The story name\\n- summary: 2-3 engaging sentences about the story\\n- characters: Array of main character names\\n- moral: The lesson or moral of the story\\n- origin_country: Country of origin\\n- difficulty: easy or medium\\n\\nReturn ONLY a valid JSON array with these fields. No additional text.\"\n    }]\n  }],\n  \"tools\": [{\n    \"googleSearch\": {}\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 4096\n  }\n}",
-                "options": {}
+                "options": {
+                    "response": {
+                        "response": {
+                            "neverError": true
+                        }
+                    },
+                    "timeout": 60000
+                }
             },
             "id": "e5f6a7b8-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
             "name": "Search Stories (Gemini)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                920,
+                1140,
                 280
-            ]
+            ],
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 2000,
+            "onError": "continueRegularOutput"
         },
         {
             "parameters": {
-                "jsCode": "const response = $input.first().json;\nlet content = '';\n\ntry {\n  content = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response from Gemini', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet stories = [];\n\ntry {\n  // Try to extract JSON array from the response\n  const jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    // Try parsing entire content\n    stories = JSON.parse(content);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', raw: content.substring(0, 500) } }];\n}\n\nconst timestamp = new Date().toISOString();\nreturn stories.map((story, index) => ({\n  json: {\n    id: `story_${Date.now()}_${index}`,\n    title: story.title || 'Untitled',\n    summary: story.summary || '',\n    characters: Array.isArray(story.characters) ? story.characters.join(', ') : (story.characters || ''),\n    moral: story.moral || '',\n    origin: story.origin_country || story.origin || '',\n    difficulty: story.difficulty || 'easy',\n    status: 'pending',\n    created_at: timestamp\n  }\n}));"
+                "jsCode": "const response = $input.first().json;\nlet content = '';\n\n// Check for API errors first\nif (response.error) {\n  return [{\n    json: {\n      success: false,\n      error: `API Error: ${response.error.message || JSON.stringify(response.error)}`,\n      error_type: 'api_error',\n      stories: []\n    }\n  }];\n}\n\n// Try to extract content from response\ntry {\n  if (response.candidates && response.candidates[0] && response.candidates[0].content) {\n    content = response.candidates[0].content.parts[0].text;\n  } else {\n    return [{\n      json: {\n        success: false,\n        error: 'No content in Gemini response',\n        error_type: 'empty_response',\n        raw: JSON.stringify(response).substring(0, 500),\n        stories: []\n      }\n    }];\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to extract response content: ' + e.message,\n      error_type: 'parse_error',\n      raw: JSON.stringify(response).substring(0, 500),\n      stories: []\n    }\n  }];\n}\n\nlet stories = [];\n\ntry {\n  // Try multiple patterns to extract JSON\n  // Pattern 1: JSON array in content\n  let jsonMatch = content.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    stories = JSON.parse(jsonMatch[0]);\n  } else {\n    // Pattern 2: Try code blocks\n    const codeBlockMatch = content.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n    if (codeBlockMatch) {\n      stories = JSON.parse(codeBlockMatch[1]);\n    } else {\n      // Pattern 3: Try parsing entire content\n      stories = JSON.parse(content);\n    }\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to parse stories JSON: ' + e.message,\n      error_type: 'json_parse_error',\n      raw: content.substring(0, 800),\n      stories: []\n    }\n  }];\n}\n\n// Handle empty results\nif (!Array.isArray(stories) || stories.length === 0) {\n  return [{\n    json: {\n      success: false,\n      error: 'No stories found for the given query',\n      error_type: 'empty_results',\n      stories: []\n    }\n  }];\n}\n\n// Validate and filter stories\nconst timestamp = new Date().toISOString();\nconst validStories = stories\n  .filter(story => story && story.title) // Must have at least a title\n  .map((story, index) => ({\n    id: `story_${Date.now()}_${index}`,\n    title: (story.title || 'Untitled').substring(0, 200),\n    summary: (story.summary || 'No summary available').substring(0, 1000),\n    characters: Array.isArray(story.characters) ? story.characters.join(', ') : (story.characters || ''),\n    moral: (story.moral || '').substring(0, 500),\n    origin: story.origin_country || story.origin || 'Unknown',\n    difficulty: ['easy', 'medium'].includes(story.difficulty) ? story.difficulty : 'easy',\n    status: 'pending',\n    created_at: timestamp\n  }));\n\nif (validStories.length === 0) {\n  return [{\n    json: {\n      success: false,\n      error: 'All stories were malformed or missing required fields',\n      error_type: 'validation_error',\n      stories: []\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    story_count: validStories.length,\n    stories: validStories\n  }\n}];"
             },
             "id": "f6a7b8c9-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
             "name": "Parse Stories",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1140,
+                1360,
                 280
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "st0ry-succ-1234-5678-90abcdef1234",
+            "name": "Stories Found?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1540,
+                280
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Split stories array into individual items for saving\nconst data = $input.first().json;\nreturn data.stories.map(story => ({ json: story }));"
+            },
+            "id": "spl1t-st0r-1234-5678-90abcdef5678",
+            "name": "Split Stories",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1720,
+                200
             ]
         },
         {
@@ -170,8 +247,52 @@
             "type": "n8n-nodes-base.googleSheets",
             "typeVersion": 4.5,
             "position": [
-                1360,
-                280
+                1920,
+                200
+            ],
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 1000,
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "aggregate": "aggregateAllItemData",
+                "options": {}
+            },
+            "id": "aggr-st0r-1234-5678-90abcdef9012",
+            "name": "Aggregate Saved",
+            "type": "n8n-nodes-base.aggregate",
+            "typeVersion": 1,
+            "position": [
+                2100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.first().json.data;\nconst count = items.length;\n\nreturn [{\n  json: {\n    success: true,\n    message: `✅ Successfully saved ${count} stories to Google Sheets!`,\n    stories_saved: count,\n    story_titles: items.map(s => s.title).join(', ')\n  }\n}];"
+            },
+            "id": "succ-t0p1-1234-5678-90abcdef3456",
+            "name": "Topics Success Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2280,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: `❌ Topic Generation Failed\\n\\nError: ${data.error}\\nType: ${data.error_type || 'unknown'}`,\n    error: data.error,\n    error_type: data.error_type\n  }\n}];"
+            },
+            "id": "fa1l-t0p1-1234-5678-90abcdef7890",
+            "name": "Topics Failure Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1720,
+                360
             ]
         },
         {
@@ -202,21 +323,58 @@
             "type": "n8n-nodes-base.googleSheets",
             "typeVersion": 4.5,
             "position": [
-                920,
+                1140,
+                480
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 1000,
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\nconst storyId = $('Validate Input').first().json.story_id;\n\n// Check if we got any results\nif (!items || items.length === 0 || !items[0].json || Object.keys(items[0].json).length === 0) {\n  return [{\n    json: {\n      success: false,\n      error: `Story not found with ID: ${storyId}`,\n      error_type: 'not_found'\n    }\n  }];\n}\n\nconst story = items[0].json;\n\n// Validate story has required fields\nif (!story.Title) {\n  return [{\n    json: {\n      success: false,\n      error: `Story found but missing required field: Title`,\n      error_type: 'invalid_data',\n      story_id: storyId\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    story: story\n  }\n}];"
+            },
+            "id": "ch3ck-st0ry-1234-5678-90abcdef1234",
+            "name": "Check Story Found",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1320,
                 480
             ]
         },
         {
             "parameters": {
-                "jsCode": "const story = $input.first().json;\nconst narratorId = $('Set Input Parameters').first().json.narrator || 'mira';\n\nconst characters = {\n  mira: {\n    name: 'Mira the Storyteller',\n    voice_id: 'EXAVITQu4vr4xnSDxMaL',\n    visual_style: 'Young Indian girl, 10 years old, long black hair, colorful dress, warm smile, cartoon style',\n    intro: 'Hello little friends! Mira here with a wonderful story!',\n    catchphrase: 'And thats how we learn to be kind!'\n  },\n  bolo: {\n    name: 'Bolo the Parrot',\n    voice_id: 'TxGEqnHWrfWFTfGW9XjX',\n    visual_style: 'Bright green parrot, red beak, expressive cartoon eyes, fluffy feathers',\n    intro: 'Bolo is here! Ready for adventure!',\n    catchphrase: 'Squawk! Thats amazing!'\n  },\n  dadu: {\n    name: 'Dadu the Wise Owl',\n    voice_id: 'VR6AewLTigWG4xSOukaG',\n    visual_style: 'Wise old owl with round spectacles, brown feathers, gentle expression',\n    intro: 'Gather around children. Dadu has a story to share.',\n    catchphrase: 'Wisdom is the greatest treasure.'\n  },\n  sunny: {\n    name: 'Sunny the Elephant',\n    voice_id: 'pNInz6obpgDQGcFmaJgB',\n    visual_style: 'Baby elephant with big ears, pink cheeks, colorful hat, cartoon style',\n    intro: 'Sunny here! Lets go on an adventure!',\n    catchphrase: 'Together we can do anything!'\n  }\n};\n\nconst narrator = characters[narratorId] || characters.mira;\n\nreturn [{\n  json: {\n    story: story,\n    narrator: narrator,\n    narrator_id: narratorId\n  }\n}];"
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "st0ry-f0und-1234-5678-90abcdef5678",
+            "name": "Story Found?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                480
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\nconst narratorId = $('Validate Input').first().json.narrator || 'mira';\n\nconst characters = {\n  mira: {\n    name: 'Mira the Storyteller',\n    voice_id: 'EXAVITQu4vr4xnSDxMaL',\n    visual_style: 'Young Indian girl, 10 years old, long black hair, colorful dress, warm smile, cartoon style',\n    intro: 'Hello little friends! Mira here with a wonderful story!',\n    catchphrase: 'And thats how we learn to be kind!'\n  },\n  bolo: {\n    name: 'Bolo the Parrot',\n    voice_id: 'TxGEqnHWrfWFTfGW9XjX',\n    visual_style: 'Bright green parrot, red beak, expressive cartoon eyes, fluffy feathers',\n    intro: 'Bolo is here! Ready for adventure!',\n    catchphrase: 'Squawk! Thats amazing!'\n  },\n  dadu: {\n    name: 'Dadu the Wise Owl',\n    voice_id: 'VR6AewLTigWG4xSOukaG',\n    visual_style: 'Wise old owl with round spectacles, brown feathers, gentle expression',\n    intro: 'Gather around children. Dadu has a story to share.',\n    catchphrase: 'Wisdom is the greatest treasure.'\n  },\n  sunny: {\n    name: 'Sunny the Elephant',\n    voice_id: 'pNInz6obpgDQGcFmaJgB',\n    visual_style: 'Baby elephant with big ears, pink cheeks, colorful hat, cartoon style',\n    intro: 'Sunny here! Lets go on an adventure!',\n    catchphrase: 'Together we can do anything!'\n  }\n};\n\nconst narrator = characters[narratorId] || characters.mira;\n\nreturn [{\n  json: {\n    story: data.story,\n    narrator: narrator,\n    narrator_id: narratorId\n  }\n}];"
             },
             "id": "c9d0e1f2-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
             "name": "Get Narrator Character",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1140,
-                480
+                1680,
+                400
             ]
         },
         {
@@ -244,41 +402,98 @@
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a children's video script writer. Create a 60-second YouTube Shorts script.\\n\\nStory Title: {{ $json.story.Title }}\\nSummary: {{ $json.story.Summary }}\\nMoral: {{ $json.story.Moral }}\\n\\nNarrator: {{ $json.narrator.name }}\\nIntro: {{ $json.narrator.intro }}\\nCatchphrase: {{ $json.narrator.catchphrase }}\\n\\nCreate 6-8 scenes (7-10 seconds each). Return ONLY valid JSON:\\n{\\n  \\\"title\\\": \\\"YouTube title with emoji\\\",\\n  \\\"hook\\\": \\\"First 3 seconds text\\\",\\n  \\\"scenes\\\": [{\\n    \\\"scene_number\\\": 1,\\n    \\\"duration_seconds\\\": 8,\\n    \\\"narration\\\": \\\"What narrator says\\\",\\n    \\\"visual_prompt\\\": \\\"Image prompt for scene\\\",\\n    \\\"emotion\\\": \\\"cheerful\\\"\\n  }],\\n  \\\"moral_text\\\": \\\"Simple moral\\\",\\n  \\\"call_to_action\\\": \\\"Follow for more!\\\"\\n}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.7,\n    \"maxOutputTokens\": 4096\n  }\n}",
-                "options": {}
+                "options": {
+                    "response": {
+                        "response": {
+                            "neverError": true
+                        }
+                    },
+                    "timeout": 60000
+                }
             },
             "id": "d0e1f2a3-4b5c-6d7e-8f9a-0b1c2d3e4f5a",
             "name": "Generate Script (Gemini)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                1360,
-                480
-            ]
+                1880,
+                400
+            ],
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 2000,
+            "onError": "continueRegularOutput"
         },
         {
             "parameters": {
-                "jsCode": "const response = $input.first().json;\nlet text = '';\n\ntry {\n  text = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response from Gemini', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet script;\ntry {\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/) || text.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    script = JSON.parse(jsonMatch[1]);\n  } else {\n    const objectMatch = text.match(/\\{[\\s\\S]*\\}/);\n    script = JSON.parse(objectMatch[0]);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse script', raw: text.substring(0, 500) } }];\n}\n\nconst previousData = $('Get Narrator Character').first().json;\n\nreturn [{\n  json: {\n    ...script,\n    story_id: previousData.story.ID,\n    story_title: previousData.story.Title,\n    narrator: previousData.narrator,\n    narrator_id: previousData.narrator_id,\n    generated_at: new Date().toISOString()\n  }\n}];"
+                "jsCode": "const response = $input.first().json;\nconst previousData = $('Get Narrator Character').first().json;\nlet text = '';\n\n// Check for API errors\nif (response.error) {\n  return [{\n    json: {\n      success: false,\n      error: `API Error: ${response.error.message || JSON.stringify(response.error)}`,\n      error_type: 'api_error',\n      story_id: previousData.story.ID\n    }\n  }];\n}\n\n// Extract text from response\ntry {\n  if (response.candidates && response.candidates[0] && response.candidates[0].content) {\n    text = response.candidates[0].content.parts[0].text;\n  } else {\n    return [{\n      json: {\n        success: false,\n        error: 'No content in Gemini response',\n        error_type: 'empty_response',\n        raw: JSON.stringify(response).substring(0, 500),\n        story_id: previousData.story.ID\n      }\n    }];\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to extract response: ' + e.message,\n      error_type: 'parse_error',\n      story_id: previousData.story.ID\n    }\n  }];\n}\n\nlet script;\ntry {\n  // Try code block first\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/) || text.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    script = JSON.parse(jsonMatch[1]);\n  } else {\n    // Try to find JSON object\n    const objectMatch = text.match(/\\{[\\s\\S]*\\}/);\n    if (objectMatch) {\n      script = JSON.parse(objectMatch[0]);\n    } else {\n      throw new Error('No JSON found in response');\n    }\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to parse script JSON: ' + e.message,\n      error_type: 'json_parse_error',\n      raw: text.substring(0, 800),\n      story_id: previousData.story.ID\n    }\n  }];\n}\n\n// Validate script structure\nif (!script.title || !script.scenes || !Array.isArray(script.scenes)) {\n  return [{\n    json: {\n      success: false,\n      error: 'Script missing required fields (title or scenes)',\n      error_type: 'validation_error',\n      story_id: previousData.story.ID\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    ...script,\n    story_id: previousData.story.ID,\n    story_title: previousData.story.Title,\n    narrator: previousData.narrator,\n    narrator_id: previousData.narrator_id,\n    scene_count: script.scenes.length,\n    generated_at: new Date().toISOString()\n  }\n}];"
             },
             "id": "e1f2a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
             "name": "Parse Script Response",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1580,
-                480
+                2060,
+                400
             ]
         },
         {
             "parameters": {
-                "jsCode": "const script = $input.first().json;\n\nlet preview = '📺 VIDEO SCRIPT PREVIEW\\n\\n';\npreview += '🎬 Title: ' + script.title + '\\n';\npreview += '🎯 Hook: ' + script.hook + '\\n';\npreview += '🎭 Narrator: ' + script.narrator.name + '\\n\\n';\npreview += '📜 SCENES:\\n\\n';\n\nif (script.scenes && Array.isArray(script.scenes)) {\n  script.scenes.forEach((scene) => {\n    preview += 'Scene ' + scene.scene_number + ' (' + scene.duration_seconds + 's)\\n';\n    preview += '🗣️ \"' + scene.narration + '\"\\n';\n    preview += '🖼️ ' + (scene.visual_prompt || '').substring(0, 80) + '...\\n\\n';\n  });\n}\n\npreview += '💡 Moral: ' + script.moral_text + '\\n';\npreview += '📢 CTA: ' + script.call_to_action;\n\nreturn [{\n  json: {\n    ...script,\n    preview_text: preview\n  }\n}];"
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "scr1pt-succ-1234-5678-90abcdef1234",
+            "name": "Script Generated?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                2240,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const script = $input.first().json;\n\nlet preview = '📺 VIDEO SCRIPT PREVIEW\\n\\n';\npreview += '🎬 Title: ' + (script.title || 'N/A') + '\\n';\npreview += '🎯 Hook: ' + (script.hook || 'N/A') + '\\n';\npreview += '🎭 Narrator: ' + (script.narrator?.name || 'N/A') + '\\n';\npreview += '📊 Scenes: ' + (script.scene_count || 0) + '\\n\\n';\npreview += '📜 SCENES:\\n\\n';\n\nif (script.scenes && Array.isArray(script.scenes)) {\n  script.scenes.forEach((scene) => {\n    preview += 'Scene ' + scene.scene_number + ' (' + scene.duration_seconds + 's)\\n';\n    preview += '🗣️ \"' + (scene.narration || '').substring(0, 100) + '\"\\n';\n    preview += '🖼️ ' + (scene.visual_prompt || '').substring(0, 80) + '...\\n\\n';\n  });\n}\n\npreview += '💡 Moral: ' + (script.moral_text || 'N/A') + '\\n';\npreview += '📢 CTA: ' + (script.call_to_action || 'N/A');\n\nreturn [{\n  json: {\n    success: true,\n    message: '✅ Script generated successfully!',\n    ...script,\n    preview_text: preview\n  }\n}];"
             },
             "id": "f2a3b4c5-6d7e-8f9a-0b1c-2d3e4f5a6b7c",
             "name": "Create Script Preview",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1800,
+                2420,
+                320
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: `❌ Script Generation Failed\\n\\nStory ID: ${data.story_id || 'unknown'}\\nError: ${data.error}\\nType: ${data.error_type || 'unknown'}`,\n    error: data.error,\n    error_type: data.error_type,\n    story_id: data.story_id\n  }\n}];"
+            },
+            "id": "fa1l-scr1pt-1234-5678-90abcdef5678",
+            "name": "Script Failure Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2420,
                 480
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: `❌ Story Not Found\\n\\nError: ${data.error}\\nPlease check that the story_id exists in the Google Sheet.`,\n    error: data.error,\n    error_type: 'not_found'\n  }\n}];"
+            },
+            "id": "n0t-f0und-1234-5678-90abcdef9012",
+            "name": "Story Not Found Error",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1680,
+                560
             ]
         },
         {
@@ -309,7 +524,44 @@
             "type": "n8n-nodes-base.googleSheets",
             "typeVersion": 4.5,
             "position": [
-                920,
+                1140,
+                680
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 1000,
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\nconst storyId = $('Validate Input').first().json.story_id;\n\nif (!items || items.length === 0 || !items[0].json || Object.keys(items[0].json).length === 0) {\n  return [{\n    json: {\n      success: false,\n      error: `Story not found with ID: ${storyId}`,\n      error_type: 'not_found'\n    }\n  }];\n}\n\nconst story = items[0].json;\n\nif (!story.Title) {\n  return [{\n    json: {\n      success: false,\n      error: 'Story found but missing Title field',\n      error_type: 'invalid_data'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    ...story\n  }\n}];"
+            },
+            "id": "ch3ck-m3ta-1234-5678-90abcdef5678",
+            "name": "Check Story for Metadata",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1320,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "m3ta-f0und-1234-5678-90abcdef9012",
+            "name": "Story Found for Metadata?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1500,
                 680
             ]
         },
@@ -338,48 +590,118 @@
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Generate SEO metadata for children's video on YouTube, Instagram, TikTok.\\n\\nStory: {{ $json.Title }}\\nSummary: {{ $json.Summary }}\\nMoral: {{ $json.Moral }}\\n\\nReturn ONLY valid JSON:\\n{\\n  \\\"youtube\\\": {\\n    \\\"title\\\": \\\"60 chars max with emoji #shorts\\\",\\n    \\\"description\\\": \\\"100-150 words with keywords\\\",\\n    \\\"tags\\\": [\\\"tag1\\\", \\\"tag2\\\"],\\n    \\\"hashtags\\\": [\\\"#kids\\\", \\\"#stories\\\"]\\n  },\\n  \\\"instagram\\\": {\\n    \\\"caption\\\": \\\"Engaging caption with line breaks\\\",\\n    \\\"hashtags\\\": [\\\"#kidscontent\\\", \\\"#storytime\\\"]\\n  },\\n  \\\"tiktok\\\": {\\n    \\\"caption\\\": \\\"150 chars max catchy caption\\\",\\n    \\\"hashtags\\\": [\\\"#kidstok\\\", \\\"#storytime\\\"]\\n  }\\n}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.5,\n    \"maxOutputTokens\": 2048\n  }\n}",
-                "options": {}
+                "options": {
+                    "response": {
+                        "response": {
+                            "neverError": true
+                        }
+                    },
+                    "timeout": 60000
+                }
             },
             "id": "b4c5d6e7-8f9a-0b1c-2d3e-4f5a6b7c8d9e",
             "name": "Generate Metadata (Gemini)",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                1140,
-                680
-            ]
+                1680,
+                600
+            ],
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 2000,
+            "onError": "continueRegularOutput"
         },
         {
             "parameters": {
-                "jsCode": "const response = $input.first().json;\nlet text = '';\n\ntry {\n  text = response.candidates[0].content.parts[0].text;\n} catch (e) {\n  return [{ json: { error: 'No response', raw: JSON.stringify(response).substring(0, 300) } }];\n}\n\nlet metadata;\ntry {\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    metadata = JSON.parse(jsonMatch[1]);\n  } else {\n    metadata = JSON.parse(text.match(/\\{[\\s\\S]*\\}/)[0]);\n  }\n} catch (e) {\n  return [{ json: { error: 'Failed to parse metadata', raw: text.substring(0, 500) } }];\n}\n\nconst storyData = $('Fetch Story for Metadata').first().json;\n\nreturn [{\n  json: {\n    story_id: storyData.ID,\n    story_title: storyData.Title,\n    youtube: metadata.youtube,\n    instagram: metadata.instagram,\n    tiktok: metadata.tiktok,\n    generated_at: new Date().toISOString()\n  }\n}];"
+                "jsCode": "const response = $input.first().json;\nconst storyData = $('Check Story for Metadata').first().json;\nlet text = '';\n\n// Check for API errors\nif (response.error) {\n  return [{\n    json: {\n      success: false,\n      error: `API Error: ${response.error.message || JSON.stringify(response.error)}`,\n      error_type: 'api_error',\n      story_id: storyData.ID\n    }\n  }];\n}\n\n// Extract text\ntry {\n  if (response.candidates && response.candidates[0] && response.candidates[0].content) {\n    text = response.candidates[0].content.parts[0].text;\n  } else {\n    return [{\n      json: {\n        success: false,\n        error: 'No content in response',\n        error_type: 'empty_response',\n        story_id: storyData.ID\n      }\n    }];\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to extract response: ' + e.message,\n      error_type: 'parse_error',\n      story_id: storyData.ID\n    }\n  }];\n}\n\nlet metadata;\ntry {\n  const jsonMatch = text.match(/```json\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    metadata = JSON.parse(jsonMatch[1]);\n  } else {\n    const objectMatch = text.match(/\\{[\\s\\S]*\\}/);\n    if (objectMatch) {\n      metadata = JSON.parse(objectMatch[0]);\n    } else {\n      throw new Error('No JSON found');\n    }\n  }\n} catch (e) {\n  return [{\n    json: {\n      success: false,\n      error: 'Failed to parse metadata: ' + e.message,\n      error_type: 'json_parse_error',\n      raw: text.substring(0, 500),\n      story_id: storyData.ID\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    story_id: storyData.ID,\n    story_title: storyData.Title,\n    youtube: metadata.youtube || null,\n    instagram: metadata.instagram || null,\n    tiktok: metadata.tiktok || null,\n    generated_at: new Date().toISOString()\n  }\n}];"
             },
             "id": "c5d6e7f8-9a0b-1c2d-3e4f-5a6b7c8d9e0f",
             "name": "Parse Metadata Response",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1360,
-                680
+                1860,
+                600
             ]
         },
         {
             "parameters": {
-                "jsCode": "const meta = $input.first().json;\n\nlet summary = '📊 METADATA GENERATED\\n\\n';\nsummary += 'Story: ' + meta.story_title + '\\n';\nsummary += 'ID: ' + meta.story_id + '\\n\\n';\n\nif (meta.youtube) {\n  summary += '📺 YOUTUBE\\n';\n  summary += 'Title: ' + meta.youtube.title + '\\n';\n  summary += 'Tags: ' + (meta.youtube.tags || []).slice(0, 5).join(', ') + '\\n\\n';\n}\n\nif (meta.instagram) {\n  summary += '📸 INSTAGRAM\\n';\n  summary += 'Hashtags: ' + (meta.instagram.hashtags || []).length + ' tags\\n\\n';\n}\n\nif (meta.tiktok) {\n  summary += '🎵 TIKTOK\\n';\n  summary += 'Caption: ' + (meta.tiktok.caption || '').substring(0, 50) + '...\\n\\n';\n}\n\nsummary += '✅ Ready to publish!';\n\nreturn [{\n  json: {\n    ...meta,\n    summary: summary\n  }\n}];"
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "m3ta-succ-1234-5678-90abcdef3456",
+            "name": "Metadata Generated?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                2040,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const meta = $input.first().json;\n\nlet summary = '📊 METADATA GENERATED SUCCESSFULLY\\n\\n';\nsummary += '📖 Story: ' + (meta.story_title || 'N/A') + '\\n';\nsummary += '🆔 ID: ' + (meta.story_id || 'N/A') + '\\n\\n';\n\nif (meta.youtube) {\n  summary += '📺 YOUTUBE\\n';\n  summary += '  Title: ' + (meta.youtube.title || 'N/A') + '\\n';\n  summary += '  Tags: ' + (meta.youtube.tags || []).slice(0, 5).join(', ') + '\\n\\n';\n}\n\nif (meta.instagram) {\n  summary += '📸 INSTAGRAM\\n';\n  summary += '  Hashtags: ' + (meta.instagram.hashtags || []).length + ' tags\\n\\n';\n}\n\nif (meta.tiktok) {\n  summary += '🎵 TIKTOK\\n';\n  summary += '  Caption: ' + (meta.tiktok.caption || '').substring(0, 50) + '...\\n\\n';\n}\n\nsummary += '✅ Ready to publish!';\n\nreturn [{\n  json: {\n    success: true,\n    message: '✅ Metadata generated successfully!',\n    ...meta,\n    summary: summary\n  }\n}];"
             },
             "id": "d6e7f8a9-0b1c-2d3e-4f5a-6b7c8d9e0f1a",
             "name": "Format Metadata Summary",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                1580,
+                2220,
+                520
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: `❌ Metadata Generation Failed\\n\\nStory ID: ${data.story_id || 'unknown'}\\nError: ${data.error}\\nType: ${data.error_type || 'unknown'}`,\n    error: data.error,\n    error_type: data.error_type\n  }\n}];"
+            },
+            "id": "fa1l-m3ta-1234-5678-90abcdef7890",
+            "name": "Metadata Failure Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2220,
                 680
             ]
         },
         {
             "parameters": {
-                "content": "## 🎬 Kids Video Pipeline\n\n### Modes:\n- `generate_topics` - Research stories from web\n- `generate_script` - Create video script\n- `generate_metadata` - Create SEO metadata\n\n### Input for Topics:\n```json\n{\n  \"mode\": \"generate_topics\",\n  \"topic_request\": \"10 Panchatantra stories\",\n  \"story_origin\": \"Indian\",\n  \"target_count\": 10\n}\n```\n\n### Input for Script/Metadata:\n```json\n{\n  \"mode\": \"generate_script\",\n  \"story_id\": \"story_1234567890_0\",\n  \"narrator\": \"mira\"\n}\n```\n\n### Narrators:\n- mira (girl storyteller)\n- bolo (parrot)\n- dadu (wise owl)\n- sunny (elephant)",
-                "height": 480,
-                "width": 300,
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: `❌ Story Not Found for Metadata\\n\\nError: ${data.error}\\nPlease check that the story_id exists.`,\n    error: data.error\n  }\n}];"
+            },
+            "id": "m3ta-n0t-f0und-1234-5678-90abcdef",
+            "name": "Metadata Story Not Found",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1680,
+                760
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    message: data.error_message,\n    errors: data.errors,\n    input: {\n      mode: data.mode,\n      story_id: data.story_id,\n      narrator: data.narrator\n    }\n  }\n}];"
+            },
+            "id": "val1d-fa1l-1234-5678-90abcdef9012",
+            "name": "Validation Error Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                880,
+                640
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## 🎬 Kids Video Pipeline (Robust Version)\n\n### Modes:\n- `generate_topics` - Research stories from web\n- `generate_script` - Create video script\n- `generate_metadata` - Create SEO metadata\n\n### Input for Topics:\n```json\n{\n  \"mode\": \"generate_topics\",\n  \"topic_request\": \"10 Panchatantra stories\",\n  \"story_origin\": \"Indian\",\n  \"target_count\": 10\n}\n```\n\n### Input for Script/Metadata:\n```json\n{\n  \"mode\": \"generate_script\",\n  \"story_id\": \"story_1234567890_0\",\n  \"narrator\": \"mira\"\n}\n```\n\n### Narrators:\n- mira (girl storyteller)\n- bolo (parrot)\n- dadu (wise owl)\n- sunny (elephant)\n\n### 🛡️ Robustness Features:\n- Input validation\n- Retry on API failures (3x)\n- Empty result handling\n- Story not found handling\n- JSON parse fallbacks",
+                "height": 620,
+                "width": 320,
                 "color": 4
             },
             "id": "e7f8a9b0-1c2d-3e4f-5a6b-7c8d9e0f1a2b",
@@ -387,8 +709,8 @@
             "type": "n8n-nodes-base.stickyNote",
             "typeVersion": 1,
             "position": [
-                -80,
-                260
+                -100,
+                200
             ]
         },
         {
@@ -403,8 +725,8 @@
             "type": "n8n-nodes-base.stickyNote",
             "typeVersion": 1,
             "position": [
-                -80,
-                760
+                -100,
+                840
             ]
         }
     ],
@@ -422,6 +744,35 @@
         },
         "Set Input Parameters": {
             "main": [
+                [
+                    {
+                        "node": "Validate Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate Input": {
+            "main": [
+                [
+                    {
+                        "node": "Validation Failed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validation Failed?": {
+            "main": [
+                [
+                    {
+                        "node": "Validation Error Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
                 [
                     {
                         "node": "Is Generate Topics?",
@@ -489,7 +840,58 @@
             "main": [
                 [
                     {
+                        "node": "Stories Found?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Stories Found?": {
+            "main": [
+                [
+                    {
+                        "node": "Split Stories",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Topics Failure Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split Stories": {
+            "main": [
+                [
+                    {
                         "node": "Save to Google Sheets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save to Google Sheets": {
+            "main": [
+                [
+                    {
+                        "node": "Aggregate Saved",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Aggregate Saved": {
+            "main": [
+                [
+                    {
+                        "node": "Topics Success Summary",
                         "type": "main",
                         "index": 0
                     }
@@ -500,7 +902,36 @@
             "main": [
                 [
                     {
+                        "node": "Check Story Found",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Story Found": {
+            "main": [
+                [
+                    {
+                        "node": "Story Found?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Story Found?": {
+            "main": [
+                [
+                    {
                         "node": "Get Narrator Character",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Story Not Found Error",
                         "type": "main",
                         "index": 0
                     }
@@ -533,7 +964,25 @@
             "main": [
                 [
                     {
+                        "node": "Script Generated?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Script Generated?": {
+            "main": [
+                [
+                    {
                         "node": "Create Script Preview",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Script Failure Summary",
                         "type": "main",
                         "index": 0
                     }
@@ -544,7 +993,36 @@
             "main": [
                 [
                     {
+                        "node": "Check Story for Metadata",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Story for Metadata": {
+            "main": [
+                [
+                    {
+                        "node": "Story Found for Metadata?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Story Found for Metadata?": {
+            "main": [
+                [
+                    {
                         "node": "Generate Metadata (Gemini)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Metadata Story Not Found",
                         "type": "main",
                         "index": 0
                     }
@@ -566,7 +1044,25 @@
             "main": [
                 [
                     {
+                        "node": "Metadata Generated?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Metadata Generated?": {
+            "main": [
+                [
+                    {
                         "node": "Format Metadata Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Metadata Failure Summary",
                         "type": "main",
                         "index": 0
                     }
@@ -578,5 +1074,5 @@
         "executionOrder": "v1"
     },
     "pinData": {},
-    "versionId": "1"
+    "versionId": "2"
 }
